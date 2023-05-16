@@ -4,15 +4,15 @@
 #include "rngs.h"
 #include "rvgs.h"
 
-#define START             0.0                 /* initial time                   */
+#define START             0.0               /* initial time                   */
 #define STOP              20000             /* terminal (close the door) time */
 #define PRIORITY_CLASSES  2
-#define PROCESSABLE_JOBS  1 << 20
+#define PROCESSABLE_JOBS  1 << 25
 
 double probs[PRIORITY_CLASSES] = {0.63212, 0.36788};
 double lambda = 2.0;
 double mu = 3.0;
-static int servers_num = 1;
+int servers_num = 4;
 int seed = 13;
 
 double arrival = START;
@@ -23,7 +23,7 @@ typedef struct {
   double last_arrival[PRIORITY_CLASSES+1];  // last arrival time of a job of class 'k' (global last arrival if k=PRIORITY_CLASSES)
 } time;
 
-typedef struct time_integrated{
+typedef struct {
   double node;                    /* time integrated jobs in the node  */
   double queue;                   /* time integrated jobs in the queue */
   double service;                 /* time integrated jobs in service   */
@@ -35,8 +35,8 @@ typedef struct {                   // accumulated sums per server
 } accumulated_sums;
 
 typedef struct {                        /* the next-event list    */
-  double time;                             /*   next event time      */
-  int    status;                             /*   event status, 0 or 1 */
+  double time;                          /*   next event time      */
+  int    status;                        /*   event status, 0 or 1 */
 } next_event;
 
 typedef struct {
@@ -50,7 +50,7 @@ typedef struct {
   double utilization;
 } analysis;
 
-typedef struct job {
+typedef struct job{
   double size;
   int priority;
   struct job *next;
@@ -110,7 +110,8 @@ void init_queues(job ***queue){
   }
 }
 
-int NextEvent(next_event *events){
+int NextEvent(next_event *events)
+{
   int e;                                      
   int i = 0;
 
@@ -134,12 +135,12 @@ int FindServer(next_event *event)
   int s;
   int i = 1;
 
-  while(event[i].status == 1){       /* find the processed_jobs of the first available */
-    i++;                        /* (idle) server                         */
+  while(event[i].status == 1){        // find the processed_jobs of the first available
+    i++;                              // (idle) server
   }       
   s = i;
-  while(i < servers_num){     /* now, check the others to find which   */ 
-    i++;                        /* has been idle longest                 */
+  while(i < servers_num){             // now, check the others to find which
+    i++;                              // has been idle longest
     if((event[i].status == 0) && (event[i].time < event[s].time)){
       s = i;
     }
@@ -206,6 +207,7 @@ int main(void){
   int e;                                      // next event index
   int s;                                      // server index
   time_integrated area[PRIORITY_CLASSES+1];   // time integrated variables
+  long spawned_jobs = 0;
   long processed_jobs[PRIORITY_CLASSES+1];    // departed jobs of priority 'k' (all priorities if k=PRIORITY_CLASSES)
   long node_jobs[PRIORITY_CLASSES+1];         // jobs of priority 'k'  in the node (all priorities if k=PRIORITY_CLASSES)
   long priority_queue_num[PRIORITY_CLASSES+1];
@@ -215,13 +217,13 @@ int main(void){
   job *new_job = NULL, *serving_job[servers_num + 1];
 
   //init enviornment
-  
   for(int i=0; i<=PRIORITY_CLASSES; i++){
     area[i].node = 0.0;
     area[i].queue = 0.0;
     node_jobs[i] = 0;
     processed_jobs[i] = 0;
     priority_queue_num[i] = 0;
+    t.last_arrival[i] = 0;
   }
   init_queues(&priority_queue);
 
@@ -239,45 +241,47 @@ int main(void){
     serving_job[s] = NULL;
   }
 
-  while((event[0].status != 0 || node_jobs[PRIORITY_CLASSES] > 0) && processed_jobs[PRIORITY_CLASSES] < PROCESSABLE_JOBS) {
-    e = NextEvent(event);                                                   // next event index
+  while(event[0].status != 0 || node_jobs[PRIORITY_CLASSES] > 0){
+    e = NextEvent(event);                                            // next event index
     t.next = event[e].time;                                          // next event time
     for(int i=0; i<=PRIORITY_CLASSES; i++){
       area[i].node += (t.next - t.current) * node_jobs[i];           // update integral
       area[i].queue += (t.next - t.current) * priority_queue_num[i];
     }
-    t.current = t.next;                                                     // advance the clock
+    t.current = t.next;                                              // advance the clock
 
     if(e == 0){ //process an arrival
       selected_class = SelectPriorityClass(probs);
       new_job = GenerateJob(GetService(), selected_class);
-      InsertJob(&priority_queue[selected_class], new_job);
-      priority_queue_num[PRIORITY_CLASSES]++;
-      priority_queue_num[selected_class]++;
+      spawned_jobs++;
       node_jobs[PRIORITY_CLASSES]++;
       node_jobs[selected_class]++;
-      t.last_arrival[selected_class] = t.current;
       t.last_arrival[PRIORITY_CLASSES] = t.current;
+      t.last_arrival[selected_class] = t.current;
 
-      event[0].time = GetArrival(lambda);
-      if(event[0].time > STOP){
-        event[0].status = 0;
-      }
-      if(node_jobs[PRIORITY_CLASSES] <= servers_num){
+      if(node_jobs[PRIORITY_CLASSES] <= servers_num){ // if possible, assign job to a server
         s = FindServer(event);
-        serving_job[s] = ExtractJob(priority_queue);
-        priority_queue_num[PRIORITY_CLASSES]--;
-        priority_queue_num[serving_job[s]->priority]--;
-        sum[s][PRIORITY_CLASSES].service += serving_job[s]->size;
-        sum[s][PRIORITY_CLASSES].served++;
-        sum[s][serving_job[s]->priority].service += serving_job[s]->size;
-        sum[s][serving_job[s]->priority].served++;
+        serving_job[s] = new_job;
         event[s].time = t.current + serving_job[s]->size;
         event[s].status = 1;
+      }
+      else{ // else, add job in a queue
+        InsertJob(&priority_queue[selected_class], new_job);
+        priority_queue_num[PRIORITY_CLASSES]++;
+        priority_queue_num[selected_class]++;
+      }
+
+      event[0].time = GetArrival(lambda);
+      if(event[0].time > STOP || spawned_jobs >= PROCESSABLE_JOBS){
+        event[0].status = 0;
       }
     }
     else{ //process a departure from server 's'
       s = e;
+      sum[s][PRIORITY_CLASSES].service += serving_job[s]->size;
+      sum[s][PRIORITY_CLASSES].served++;
+      sum[s][serving_job[s]->priority].service += serving_job[s]->size;
+      sum[s][serving_job[s]->priority].served++;
       processed_jobs[PRIORITY_CLASSES]++;
       processed_jobs[serving_job[s]->priority]++;
       node_jobs[PRIORITY_CLASSES]--;
@@ -287,10 +291,6 @@ int main(void){
         serving_job[s] = ExtractJob(priority_queue);
         priority_queue_num[serving_job[s]->priority]--;
         priority_queue_num[PRIORITY_CLASSES]--;
-        sum[s][PRIORITY_CLASSES].service += serving_job[s]->size;
-        sum[s][PRIORITY_CLASSES].served++;
-        sum[s][serving_job[s]->priority].service += serving_job[s]->size;
-        sum[s][serving_job[s]->priority].served++;
         event[s].time = t.current + serving_job[s]->size;
       }
       else{
@@ -312,7 +312,7 @@ int main(void){
   
   for(int i=0; i<=PRIORITY_CLASSES; i++){
     result[i].jobs = processed_jobs[i];
-    result[i].interarrival = t.last_arrival[i] / processed_jobs[i];
+    result[i].interarrival = (t.last_arrival[i] - START) / processed_jobs[i];
     result[i].wait = area[i].node / processed_jobs[i];
     result[i].delay = area[i].queue / processed_jobs[i];
     result[i].service = total_service[i] / total_served[i];
@@ -321,41 +321,37 @@ int main(void){
     result[i].utilization = (total_service[i] / servers_num) / t.current;
   }
 
-  printf("final event[0].time = %lf\n", event[0].time);
-  printf("final t.current = %lf\n", t.current);
-  printf("last arrival global = %lf\n", t.last_arrival[PRIORITY_CLASSES]);
-
   printf("\nfor %ld jobs the service node statistics are:\n", result[PRIORITY_CLASSES].jobs);
   for(int i=0; i<PRIORITY_CLASSES; i++){
-    printf("  class[%d]: %7.3lf %%\n", i, (double)result[i].jobs * 100 / result[PRIORITY_CLASSES].jobs);
+    printf("  class[%d]: %.3lf %%\n", i, (double)result[i].jobs * 100 / result[PRIORITY_CLASSES].jobs);
   }
-  printf("    average interarrival time = %6.4lf\n", result[PRIORITY_CLASSES].interarrival);
+  printf("    average interarrival time = %lf\n", result[PRIORITY_CLASSES].interarrival);
   for(int i=0; i<PRIORITY_CLASSES; i++){
-    printf("      average class[%d] interarrival = %6.4lf\n", i, result[i].interarrival);
+    printf("      class[%d]:               = %lf\n", i, result[i].interarrival);
   }
-  printf("   average wait ............ = %6.4lf\n", result[PRIORITY_CLASSES].wait);
+  printf("    average wait              = %lf\n", result[PRIORITY_CLASSES].wait);
   for(int i=0; i<PRIORITY_CLASSES; i++){
-    printf("      average class[%d] wait  = %6.4lf\n", i, result[i].wait);
+    printf("      class[%d]:               = %lf\n", i, result[i].wait);
   }
-  printf("   average delay ........... = %6.4lf\n", result[PRIORITY_CLASSES].delay);
+  printf("    average delay             = %lf\n", result[PRIORITY_CLASSES].delay);
   for(int i=0; i<PRIORITY_CLASSES; i++){
-    printf("      average class[%d] delay = %6.4lf\n", i, result[i].delay);
+    printf("      class[%d]:               = %lf\n", i, result[i].delay);
   }
-  printf("   average service time .... = %6.4lf\n", result[PRIORITY_CLASSES].service);
-  printf("   average # in the node ... = %6.4lf\n", result[PRIORITY_CLASSES].Ns);
+  printf("    average service time      = %lf\n", result[PRIORITY_CLASSES].service);
+  printf("    average # in the node     = %lf\n", result[PRIORITY_CLASSES].Ns);
   for(int i=0; i<PRIORITY_CLASSES; i++){
-    printf("      average # of class[%d]  = %6.4lf\n", i, result[i].Ns);
+    printf("      class[%d]:               = %lf\n", i, result[i].Ns);
   }
-  printf("   average # in the queue .. = %6.4lf\n", result[PRIORITY_CLASSES].Nq);
+  printf("    average # in the queue    = %lf\n", result[PRIORITY_CLASSES].Nq);
   for(int i=0; i<PRIORITY_CLASSES; i++){
-    printf("      average # in queue[%d]  = %6.4lf\n", i, result[i].Nq);
+    printf("      class[%d]:               = %lf\n", i, result[i].Nq);
   }
-  printf("   utilization ............. = %6.4lf\n", result[PRIORITY_CLASSES].utilization);
+  printf("    utilization               = %lf\n", result[PRIORITY_CLASSES].utilization);
   for(int i=0; i<PRIORITY_CLASSES; i++){
-    printf("      average utilization of class[%d] = %6.4lf\n", i, result[i].utilization);
+    printf("      class[%d]:               = %lf\n", i, result[i].utilization);
   }
 
-  printf("the server statistics are:\n\n");
+  printf("\nthe server statistics are:\n\n");
   printf("    server     utilization     avg service        share\n");
   for(s=1; s<=servers_num; s++){
     printf("%8d %16lf %15lf %14lf\n", s, sum[s][PRIORITY_CLASSES].service / t.current, sum[s][PRIORITY_CLASSES].service / sum[s][PRIORITY_CLASSES].served, (double) sum[s][PRIORITY_CLASSES].served / processed_jobs[PRIORITY_CLASSES]);
