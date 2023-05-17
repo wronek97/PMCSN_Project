@@ -1,17 +1,27 @@
 CC=gcc
 LIBS=-lm
-OUTDIR=output/
+SRCDIR=source/
+OUTDIR=bin/
 
-all: msq priority size sjf
-
+all:
+	mkdir -p $(OUTDIR)
+	$(CC) $(SRCDIR)msq.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq $(LIBS)
+	$(CC) $(SRCDIR)msq_priority.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_priority $(LIBS)
+	$(CC) $(SRCDIR)msq_size.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_size $(LIBS)
+	$(CC) $(SRCDIR)msq_sjf.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_sjf $(LIBS)
 msq:
-	$(CC) msq.c rngs.c rvgs.c -o $(OUTDIR)msq $(LIBS)
+	mkdir -p $(OUTDIR)
+	$(CC) $(SRCDIR)msq.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq $(LIBS)
 priority:
-	$(CC) msq_priority.c rngs.c rvgs.c -o $(OUTDIR)msq_priority $(LIBS)
+	mkdir -p $(OUTDIR)
+	$(CC) $(SRCDIR)msq_priority.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_priority $(LIBS)
 size:
-	$(CC) msq_size.c rngs.c rvgs.c -o $(OUTDIR)msq_size $(LIBS)
+	mkdir -p $(OUTDIR)
+	$(CC) $(SRCDIR)msq_size.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_size $(LIBS)
 sjf:
-	$(CC) msq_sjf.c rngs.c rvgs.c -o $(OUTDIR)msq_sjf $(LIBS)
+	mkdir -p $(OUTDIR)
+	$(CC) $(SRCDIR)msq_sjf.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_sjf $(LIBS)
 
 clean:
-	rm -f $(OUTDIR)msq $(OUTDIR)msq_priority $(OUTDIR)msq_size msq_sjf
+	rm -r $(OUTDIR)
+
