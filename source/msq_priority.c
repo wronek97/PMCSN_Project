@@ -5,7 +5,7 @@
 #include "rvgs.h"
 
 #define START             0.0               /* initial time                   */
-#define STOP              20000             /* terminal (close the door) time */
+#define STOP              20000.0           /* terminal (close the door) time */
 #define PRIORITY_CLASSES  2
 #define PROCESSABLE_JOBS  1 << 25
 
@@ -31,7 +31,7 @@ typedef struct {
 
 typedef struct {                   // accumulated sums per server
   double service;                  // service times
-  long   served;                   // node_jobs served
+  long   served;                   // jobs served in the node
 } accumulated_sums;
 
 typedef struct {                        /* the next-event list    */
@@ -163,13 +163,6 @@ double GetService()
 
   return Exponential(1.0/(mu / servers_num));
 }
-
-/*double GetService()
-{
-  SelectStream(1);
-
-  return Uniform(0.0, 8.0 / 3.0);
-}*/
 
 int SelectPriorityClass(double *probs)
 {

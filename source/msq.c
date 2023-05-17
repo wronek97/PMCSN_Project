@@ -5,7 +5,7 @@
 #include "rvgs.h"
 
 #define START    0.0                    /* initial (open the door)        */
-#define STOP     20000                /* terminal (close the door) time */
+#define STOP     20000.0                /* terminal (close the door) time */
 #define SERVERS  4                      /* number of servers              */
 
 double lambda = 2.0;
@@ -135,7 +135,7 @@ int main(void)
   }
 
   printf("\nfor %ld jobs the service node statistics are:\n\n", index);
-  printf("  avg interarrivals .. = %6.4lf\n", event[0].t / index);
+  printf("  avg interarrivals .. = %6.4lf\n", (event[0].t - START) / index);
   printf("  avg wait ........... = %6.4lf\n", area / index);
   printf("  avg # in node ...... = %6.4lf\n", area / t.current);
 
