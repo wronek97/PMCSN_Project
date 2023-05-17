@@ -23,5 +23,5 @@ sjf:
 	$(CC) $(SRCDIR)msq_sjf.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_sjf $(LIBS)
 
 clean:
-	rm -r $(OUTDIR)
+	rm -f -r $(OUTDIR)
 
