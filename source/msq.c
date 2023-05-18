@@ -76,14 +76,14 @@ int main(void)
     double next;                     /* next (most imminent) event time    */
   } t;
   event_list event;
-  long number = 0;             /* number in the node                 */
-  int e;                      /* next event index                   */
-  int s;                      /* server index                       */
-  long index = 0;             /* used to count processed jobs       */
-  double area = 0.0;           /* time integrated number in the node */
+  long number = 0;                   /* number in the node                 */
+  int e;                             /* next event index                   */
+  int s;                             /* server index                       */
+  long index = 0;                    /* used to count processed jobs       */
+  double area = 0.0;                 /* time integrated number in the node */
   struct {                           /* accumulated sums of                */
-    double service;                  /*   service times                    */
-    long   served;                   /*   number served                    */
+    double service;                  /* service times                      */
+    long   served;                   /* number served                      */
   } sum[SERVERS + 1];
 
   PlantSeeds(13);
