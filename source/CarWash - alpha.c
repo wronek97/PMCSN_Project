@@ -10,7 +10,8 @@
 
 int seed = 13;
 double arrival[NODES] = {START, START, START};
-long max_processable_jobs[NODES] = {1 << 25, 1 << 25, 1 << 25};
+long external_arrivals = 0;
+long max_processable_jobs = 1 << 25;
 
 double lambda[NODES] = {2.0, 2.0, 0.0};
 double mu[NODES] = {3.0 / 4, 3.0 / 2, 5.0};
@@ -56,7 +57,6 @@ typedef struct {                   // accumulated sums PER SERVER
 } server_stats;
 
 typedef struct {
-  long spawned_jobs;
   long rejected_jobs;
   long processed_jobs;
   long node_jobs;
@@ -65,6 +65,7 @@ typedef struct {
   double last_arrival;                // last arrival time of a job in the node "k"
   double last_departure;
   job *queue;
+  server_stats *servers;
 } node_stats;
 
 typedef struct {
@@ -156,48 +157,67 @@ int main(void)
   double current_time = 0;
   event *ev = NULL, *event_list;
   node_stats *node;
-  job *new_job = NULL;
+  job *job = NULL;
+  node_id actual_node;
+  int actual_server;
 
   PlantSeeds(seed);
 
-  while(/*current time < STOP && there are jobs in the system (in one of his nodes)*/) {
+  while(event_list != NULL){//current time < STOP && there are jobs in the system (in one of his nodes)
     ev = ExtractNextEvent(&event_list);
+    actual_node = ev->node;
+    current_time = ev->time;
     if(ev->type == job_arrival){        // process an arrival
-      if(node[ev->node].queue_jobs < node[ev->node].queue_jobs){                             /*there is availble space in queue*/
-        // generate job
-        node[ev->node].node_jobs++;
-        node[ev->node].last_arrival = current_time;
-        if(/*exists an available server*/){
-          // find available server
-          // assign job to the server
+      external_arrivals++;
+      if(node[actual_node].queue_jobs < node[actual_node].queue_jobs){  //there is availble space in queue
+        job = GenerateJob(current_time, GetService(actual_node));
+        node[actual_node].node_jobs++;
+        node[actual_node].last_arrival = current_time;
+        if(node[actual_node].node_jobs <= servers_num[actual_node]){
+          actual_server = FindServer(actual_node); // find available server
+          node[actual_node].servers[actual_server].status = 1;
+          ev = GenerateEvent(job_departure, actual_node, actual_server, job->service);
+          InsertEvent(event_list, ev);
         }
         else{// insert job in queue
-          InsertJob(&(node[ev->node].queue), new_job);
-          node[ev->node].queue_jobs++;
+          InsertJob(&(node[actual_node].queue), job);
+          node[actual_node].queue_jobs++;
         }
       }
       else{ // reject the job
-        node[ev->node].rejected_jobs++;
+        node[actual_node].rejected_jobs++;
       }
 
-      // generate next arrival event (arrivals_count++)
-      if(/*next arrival < STOP && arrivals_count < max_processable_jobs*/){
-        //add event to the event list
+      // generate next arrival event
+      ev = GenerateEvent(job_arrival, actual_node, actual_server, GetArrival(actual_node));
+      if(ev->time < STOP && external_arrivals < max_arrivals){
+        InsertEvent(event_list, ev);
       }
     }
-    else{ //process a departure from server 's'
-      // update variables for the analysis
+    else{ //process a departure from selected server
+      actual_server = ev->server;
+      node[actual_node].servers[actual_server].status = 0;
 
-      if(node_jobs[actual_node] >= servers_num[actual_node]){
-        serving_job[actual_node][actual_server] = ExtractJob(&(queue[actual_node]));
-        event[actual_node][actual_server].time = t.current + serving_job[actual_node][actual_server]->service;
+      // update variables for the analysis (gestisci la partenza)
+      
+      processed_jobs[actual_node]++;
+      node_jobs[actual_node]--;
+      free(serving_job[actual_node][actual_server]);
+
+      if(node[actual_node].node_jobs >= servers_num[actual_node]){
+        job = ExtractJob(&(queue[actual_node]));
         queue_jobs[actual_node]--;
+
+        actual_server = FindServer(actual_node); // find available server
+        node[actual_node].servers[actual_server].status = 1;
+        ev = GenerateEvent(job_departure, actual_node, actual_server, job->service);
+        InsertEvent(event_list, ev);
       }
       else{
         event[actual_node][actual_server].status = 0;
       }
       
-      if(/*we're processing a departure from node_1*/) { // send event to next node (2 or 3)
+      if(actual_node == external_wash) { // send event to next node (2 or 3)
         if(SwitchFromNodeOne(p)){ // switch to node_2
           // generate arrival event in node_2
         }
@@ -206,7 +226,7 @@ int main(void)
         }
       }
 
-      if(/*we're processing a departure from node_2*/) { // event from node 2 goes directly on node 3
+      if(actual_node == interior_wash) { // event from node 2 goes directly on node 3
         // generate arrival in node_3
       }
     }
