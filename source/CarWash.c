@@ -269,8 +269,7 @@ int main(void)
   accumulated_sums **sum;
   int actual_node, actual_server;
 
-  job **queue;
-  job *new_job = NULL, ***serving_job;
+  job *new_job = NULL, **queue, ***serving_job;
 
   double total_arrival[NODES + 1];
   double total_service[NODES + 1];
@@ -290,9 +289,7 @@ int main(void)
   queue_init(&queue);
   serving_job_init(&serving_job);
 
-  while(event[node_1][0].status != 0 || event[node_2][0].status != 0 || 
-        node_jobs[node_1] > 0 || node_jobs[node_2] > 0 || node_jobs[node_3] > 0) {
-
+  while(event[node_1][0].status != 0 || event[node_2][0].status != 0 || node_jobs[node_1] > 0 || node_jobs[node_2] > 0 || node_jobs[node_3] > 0) {
     next_ev = NextEvent(event);                             // next event scheduled
     actual_node = next_ev.node;
     actual_server = next_ev.server;
