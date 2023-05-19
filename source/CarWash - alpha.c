@@ -5,7 +5,7 @@
 #include "rvgs.h"
 
 #define START             0.0               // initial (open the door)
-#define STOP              200000.0          // terminal (close the door) time
+#define STOP              20000.0          // terminal (close the door) time
 #define NODES             3
 
 int seed = 13;
@@ -23,7 +23,7 @@ typedef enum{
     external_wash,
     interior_wash,
     checkout
-} node_ID;
+} node_id;
 
 typedef enum{
     job_arrival,
@@ -38,8 +38,8 @@ typedef struct {
 
 typedef struct event{                 /* the next-event list    */
   event_type type;
-  node_ID node;
-  int server;
+  node_id node;
+  int server;                         // 0 if type == job_arrival
   double time;                        /* occurrence event time      */
   struct event *next;
 } event;
@@ -50,18 +50,20 @@ typedef struct job{
   struct job *next;
 } job;
 
-typedef struct {                   // accumulated sums PER SERVER
-  double service;                  // service times
-  long   served;                   // node_jobs served
+typedef struct {
   int    status;                   /* 0 idle or 1 busy */
+  double service_time;             // total service time of the server
+  long   served_jobs;              // total jobs served by the server
+  job *serving_job;
 } server_stats;
 
 typedef struct {
-  long rejected_jobs;
-  long processed_jobs;
-  long node_jobs;
+  long arrived_jobs;
   long queue_jobs;
   long service_jobs;
+  long node_jobs;
+  long rejected_jobs;
+  long processed_jobs;
   double last_arrival;                // last arrival time of a job in the node "k"
   double last_departure;
   job *queue;
@@ -81,7 +83,7 @@ typedef struct {
 } analysis;
 
 
-double GetArrival(node_ID k)
+double GetArrival(node_id k)
 {
   SelectStream(k);
 
@@ -89,11 +91,46 @@ double GetArrival(node_ID k)
   return arrival[k];
 }
    
-double GetService(node_ID k)
+double GetService(node_id k)
 {                 
   SelectStream(NODES + k);
 
   return Exponential(1.0/(mu[k]));    
+}
+
+int SwitchFromNodeOne(double p)
+{
+  if(p < 0 || p > 1){
+    printf("Parameter 'p' must be between 0 and 1\n");
+    exit(0);
+  }
+
+  SelectStream(NODES * 2);
+  if(Random() < p){   
+    return 1;           // switch to interior_wash node
+  }
+  return 0;             // switch to checkout node
+}
+
+void* GenerateEvent()
+{
+  
+
+  return ;
+}
+
+void InsertEvent()
+{
+  
+
+  return ;
+}
+
+void* ExtractEvent(event **list)
+{
+  
+
+  return ;
 }
 
 job* GenerateJob(double arrival, double service)
@@ -138,139 +175,169 @@ job* ExtractJob(job **queue)
   return served_job;
 }
 
-int SwitchFromNodeOne(double p)
-{
-  if(p < 0 || p > 1){
-    printf("Parameter 'p' must be between 0 and 1\n");
-    exit(0);
-  }
+void init_event_list(){
 
-  SelectStream(NODES * 2);
-  if(Random() < p){   
-    return 1;           // switch to interior_wash node
-  }
-  return 0;             // switch to checkout node
+
+  return ;
+}
+
+void init_nodes(){
+  
+
+  return ;
+}
+
+void init_areas(){
+  
+
+  return ;
 }
 
 int main(void)
 {
-  double current_time = 0;
   event *ev = NULL, *event_list;
-  node_stats *node;
+  node_stats *nodes;
+  time_integrated *areas;
   job *job = NULL;
   node_id actual_node;
   int actual_server;
+  double current_time = 0, next_time;
 
   PlantSeeds(seed);
+  init_event_list(&event_list);
+  init_nodes(&nodes);
+  init_areas(&areas);
 
-  while(event_list != NULL){//current time < STOP && there are jobs in the system (in one of his nodes)
+  while(event_list != NULL){ //current time < STOP && there are jobs in the system (in one of his nodes)
     ev = ExtractNextEvent(&event_list);
     actual_node = ev->node;
+  
+    if(ev == NULL){
+      next_time = STOP;
+    }
+    else{
+      next_time = ev->time;
+    }
+    for(int node=0; node<NODES; node++){
+      areas[actual_node].node_area += (next_time - current_time) * nodes[actual_node].node_jobs;
+      areas[actual_node].queue_area += (next_time - current_time) * nodes[actual_node].queue_jobs;
+    }
     current_time = ev->time;
-    if(ev->type == job_arrival){        // process an arrival
+
+    if(ev->type == job_arrival){ // process an arrival
       external_arrivals++;
-      if(node[actual_node].queue_jobs < node[actual_node].queue_jobs){  //there is availble space in queue
+      nodes[actual_node].arrived_jobs++;
+      if(nodes[actual_node].queue_jobs < nodes[actual_node].queue_jobs){ //there is availble space in queue
         job = GenerateJob(current_time, GetService(actual_node));
-        node[actual_node].node_jobs++;
-        node[actual_node].last_arrival = current_time;
-        if(node[actual_node].node_jobs <= servers_num[actual_node]){
-          actual_server = FindServer(actual_node); // find available server
-          node[actual_node].servers[actual_server].status = 1;
-          ev = GenerateEvent(job_departure, actual_node, actual_server, job->service);
-          InsertEvent(event_list, ev);
+        nodes[actual_node].node_jobs++;
+        nodes[actual_node].last_arrival = current_time;
+        if(nodes[actual_node].node_jobs <= servers_num[actual_node]){
+          actual_server = FindServer(nodes[actual_node]); // find available server
+          nodes[actual_node].servers[actual_server].status = 1;
+          nodes[actual_node].servers[actual_server].serving_job = job;
+          event *new_dep = GenerateEvent(job_departure, actual_node, actual_server, job->service);
+          InsertEvent(event_list, new_dep);
         }
-        else{// insert job in queue
-          InsertJob(&(node[actual_node].queue), job);
-          node[actual_node].queue_jobs++;
+        else{ // insert job in queue
+          InsertJob(&(nodes[actual_node].queue), job);
+          nodes[actual_node].queue_jobs++;
         }
       }
       else{ // reject the job
-        node[actual_node].rejected_jobs++;
+        nodes[actual_node].rejected_jobs++;
       }
 
-      // generate next arrival event
-      ev = GenerateEvent(job_arrival, actual_node, actual_server, GetArrival(actual_node));
-      if(ev->time < STOP && external_arrivals < max_arrivals){
-        InsertEvent(event_list, ev);
+      event *new_arr = GenerateEvent(job_arrival, actual_node, 0, GetArrival(actual_node)); // generate next arrival event
+      if(new_arr->time < STOP && external_arrivals < max_processable_jobs){ // schedule event only on condition
+        InsertEvent(event_list, new_arr);
       }
     }
     else{ //process a departure from selected server
       actual_server = ev->server;
-      node[actual_node].servers[actual_server].status = 0;
+      double service = nodes[actual_node].servers[actual_server].serving_job->service;
+      nodes[actual_node].servers[actual_server].service_time += service;
+      nodes[actual_node].servers[actual_server].served_jobs++;
 
-      // update variables for the analysis (gestisci la partenza)
-      
-      processed_jobs[actual_node]++;
-      node_jobs[actual_node]--;
-      free(serving_job[actual_node][actual_server]);
+      nodes[actual_node].processed_jobs++;
+      nodes[actual_node].node_jobs--;
+      free(nodes[actual_node].servers[actual_server].serving_job);
 
-      if(node[actual_node].node_jobs >= servers_num[actual_node]){
-        job = ExtractJob(&(queue[actual_node]));
-        queue_jobs[actual_node]--;
+      if(nodes[actual_node].queue_jobs > 0){
+        job = ExtractJob(&(nodes[actual_node].queue));
+        nodes[actual_node].servers[actual_server].serving_job = job;
+        nodes[actual_node].queue--;
 
-        actual_server = FindServer(actual_node); // find available server
-        node[actual_node].servers[actual_server].status = 1;
         ev = GenerateEvent(job_departure, actual_node, actual_server, job->service);
         InsertEvent(event_list, ev);
       }
       else{
-        event[actual_node][actual_server].status = 0;
+        nodes[actual_node].servers[actual_server].status = 0;
       }
       
-      if(actual_node == external_wash) { // send event to next node (2 or 3)
-        if(SwitchFromNodeOne(p)){ // switch to node_2
-          // generate arrival event in node_2
+      if(actual_node == external_wash) { // if departure is from external_wash
+        if(SwitchFromNodeOne(p)){ // switch to interior_wash
+          ev = GenerateEvent(job_arrival, interior_wash, 0, GetArrival(interior_wash));
+          InsertEvent(event_list, ev);
         }
-        else{
-          // generate arrival in node_3
+        else{ // switch to checkout
+          ev = GenerateEvent(job_arrival, checkout, 0, GetArrival(checkout));
+          InsertEvent(event_list, ev);
         }
       }
 
-      if(actual_node == interior_wash) { // event from node 2 goes directly on node 3
-        // generate arrival in node_3
+      if(actual_node == interior_wash) { // if departure is from interior_wash
+        ev = GenerateEvent(job_arrival, checkout, 0, GetArrival(checkout));
+        InsertEvent(event_list, ev);
       }
     }
 
-    // update integrals
-    // advance current time (current_time = next_event.time)
+    free(ev);
   }
+
+  double total_service[NODES + 1];
+  double total_served[NODES + 1];
 
   for(int k=0; k<NODES; k++){
+    total_service[k] = 0;
+    total_served[k] = 0;
     for(int s=1; s<=servers_num[k]; s++){
-      total_service[k] += sum[k][s].service;
-      total_served[k] += sum[k][s].served;
+      total_service[k] += nodes[k].servers[s].service_time;
+      total_served[k] += nodes[k].servers[s].served_jobs;
     }
   }
-  
-  for(int i=0; i<NODES; i++){
-    result[i].jobs = processed_jobs[i];
+
+  analysis result[NODES];
+  for(int i=0; i<NODES; i++){ //TODO: elimina print di debug seguenti
+    printf("processed_jobs[%d] = %ld\n", i, nodes[i].processed_jobs);
+    printf("total_served[%d] = %ld\n", i, total_served[i]);
+    result[i].jobs = nodes[i].processed_jobs;
     //result[i].interarrival = total_arrival[i] / processed_jobs[i];
-    result[i].interarrival = (t.last_arrival[i] - START) / processed_jobs[i];
-    result[i].wait = area[i] / processed_jobs[i];
-    result[i].delay = delay_area[i] / processed_jobs[i];
+    result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
+    result[i].delay = areas[i].queue_area / nodes[i].processed_jobs;
     result[i].service = total_service[i] / total_served[i];
-    result[i].Ns = area[i] / t.current;
-    result[i].Nq = delay_area[i] / t.current;
-    result[i].utilization = (total_service[i] / servers_num[i]) / t.current;
-    if(rejected_jobs[i] == 0) result[i].ploss = 0;
-    else result[i].ploss = (double) rejected_jobs[i] / spawned_jobs[i];
+    result[i].Ns = areas[i].node_area / current_time;
+    result[i].Nq = areas[i].queue_area / current_time;
+    result[i].utilization = (total_service[i] / servers_num[i]) / current_time;
+    if(nodes[i].arrived_jobs == 0) result[i].ploss = 0;
+    else result[i].ploss = (double) nodes[i].rejected_jobs / nodes[i].arrived_jobs;
   }
 
   printf("\n");
-  for(int node=0; node<NODES; node++){
-    printf("Node %d:\n", node+1);
-    printf("    processed jobs       = %ld\n", result[node].jobs);
-    printf("    avg interarrivals    = %lf\n", result[node].interarrival);
-    printf("    avg wait             = %lf\n", result[node].wait);
-    printf("    avg delay            = %lf\n", result[node].delay);
-    printf("    avg # in node        = %lf\n", result[node].Ns);
-    printf("    avg # in queue       = %lf\n", result[node].Nq);
-    printf("    utilizzation         = %lf\n", result[node].utilization);
-    printf("    ploss                = %lf\n", result[node].ploss);
+  for(int k=0; k<NODES; k++){
+    printf("Node %d:\n", k+1);
+    printf("    processed jobs       = %ld\n", result[k].jobs);
+    printf("    avg interarrivals    = %lf\n", result[k].interarrival);
+    printf("    avg wait             = %lf\n", result[k].wait);
+    printf("    avg delay            = %lf\n", result[k].delay);
+    printf("    avg # in node        = %lf\n", result[k].Ns);
+    printf("    avg # in queue       = %lf\n", result[k].Nq);
+    printf("    utilizzation         = %lf\n", result[k].utilization);
+    printf("    ploss                = %lf\n", result[k].ploss);
     printf("\n  the server statistics are:\n\n");
     printf("    server     utilization     avg service        share\n");
-    for(int s=1; s<=servers_num[node]; s++){
-      printf("%8d %14f %15f %15f\n", s, sum[node][s].service / t.current, sum[node][s].service / sum[node][s].served, (double) sum[node][s].served / processed_jobs[node]);
+    for(int s=1; s<=servers_num[k]; s++){
+      printf("%8d %14f %15f %15f\n", s, nodes[k].servers[s].service_time / current_time, nodes[k].servers[s].service_time / nodes[k].servers[s].served_jobs, (double) nodes[k].servers[s].served_jobs / nodes[k].processed_jobs);
     }
     printf("\n");
   }
