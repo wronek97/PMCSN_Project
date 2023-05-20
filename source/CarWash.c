@@ -5,41 +5,44 @@
 #include "rvgs.h"
 
 #define START             0.0               // initial (open the door)
-#define STOP              200000.0          // terminal (close the door) time
+#define STOP              200          // terminal (close the door) time
 #define NODES             3
+#define ext_arr           666
 
-double arrival[NODES] = {START, START, START};
 int seed = 13;
-long max_processable_jobs[NODES] = {1 << 25, 1 << 25, 1 << 25};
-long queue_len[NODES] = {6, 8, (long) INFINITY};
+double arrival[NODES] = {START, START, START};
+long external_arrivals = 0;
+long max_processable_jobs = 1 << 25;
 
 double lambda[NODES] = {2.0, 2.0, 0.0};
 double mu[NODES] = {3.0 / 4, 3.0 / 2, 5.0};
 int servers_num[NODES] = {4, 2, 1};
+long queue_len[NODES] = {6, 8, (long) INFINITY};
 double p = 0.1;
 
 typedef enum{
-    node_1,
-    node_2,
-    node_3
-} node;
+    exterior_wash,
+    interior_wash,
+    checkout
+} node_id;
+
+typedef enum{
+    job_arrival,
+    job_departure
+} event_type;
 
 typedef struct {
-  double current;                           // current time
-  double next;                              // next (most imminent) event time
-  double last_arrival[NODES];               // last arrival time of a job in the node "k"
-} time;
-
-typedef struct {
-  double node;                    /* time integrated jobs in the node  */
-  double queue;                   /* time integrated jobs in the queue */
-  double service;                 /* time integrated jobs in service   */
+  double node_area;                    /* time integrated jobs in the node  */
+  double queue_area;                   /* time integrated jobs in the queue */
 } time_integrated;
 
-typedef struct {                   // accumulated sums PER SERVER
-  double service;                  // service times
-  long   served;                   // node_jobs served
-} accumulated_sums;
+typedef struct event{                 /* the next-event list    */
+  event_type type;
+  node_id node;
+  int server;                         // 0 if type == job_arrival
+  double time;                        /* occurrence event time      */
+  struct event *next;
+} event;
 
 typedef struct job{
   double arrival;
@@ -47,15 +50,27 @@ typedef struct job{
   struct job *next;
 } job;
 
-typedef struct {                        /* the next-event list    */
-  double time;                          /*   next event time      */
-  int    status;                        /*   event status, 0 or 1 */
-} event_list;
+typedef struct {
+  int    status;                   /* 0 idle or 1 busy */
+  double service_time;             // total service time of the server
+  long   served_jobs;              // total jobs served by the server
+  double last_departure_time;
+  job *serving_job;
+} server_stats;
 
 typedef struct {
-  node node;
-  int server;
-} next_event;
+  long arrived_jobs;
+  long queue_jobs;
+  long service_jobs;
+  long node_jobs;
+  long rejected_jobs;
+  long processed_jobs;
+  double last_arrival;                // last arrival time of a job in the node "k"
+  double last_departure;
+  job *queue;
+  server_stats *servers;
+  int total_servers;
+} node_stats;
 
 typedef struct {
   long jobs;
@@ -70,7 +85,7 @@ typedef struct {
 } analysis;
 
 
-double GetArrival(node k)
+double GetArrival(node_id k)
 {
   SelectStream(k);
 
@@ -78,11 +93,88 @@ double GetArrival(node k)
   return arrival[k];
 }
    
-double GetService(node k)
+double GetService(node_id k)
 {                 
   SelectStream(NODES + k);
 
   return Exponential(1.0/(mu[k]));    
+}
+
+int SwitchFromNodeOne(double p)
+{
+  if(p < 0 || p > 1){
+    printf("Parameter 'p' must be between 0 and 1\n");
+    exit(0);
+  }
+
+  SelectStream(NODES * 2);
+  if(Random() < p){   
+    return 1;           // switch to interior_wash node
+  }
+  return 0;             // switch to checkout node
+}
+
+int SelectServer(node_stats node)
+{
+  int s;
+  int i = 0;
+
+  while(node.servers[i].status == 1){     // find the processed_jobs of the first available
+    i++;                              // (idle) server
+  }       
+  s = i;
+  while(i < node.total_servers){          // now, check the others to find which
+    i++;                              // has been idle longest
+    if((node.servers[i].status == 0) && (node.servers[i].last_departure_time < node.servers[s].last_departure_time)){
+      s = i;
+    }
+  }
+
+  return s;
+}
+
+event* GenerateEvent(event_type type, node_id node, int server, double time)
+{
+  event* new_event = malloc(sizeof(event));
+  if(new_event == NULL){
+    printf("Error allocating memory for a job\n");
+    exit(1);
+  }
+  new_event->type = type;
+  new_event->node = node;
+  new_event->server = server;
+  new_event->time = time;
+  new_event->next = NULL;
+
+  return new_event;
+}
+
+void InsertEvent(event **list, event *new_event)
+{
+  if(*list == NULL){
+    *list = new_event;
+    return;
+  }
+
+  event *aux = *list;
+  while(aux->next != NULL && aux->time < new_event->time){
+    aux = aux->next;
+  }
+  aux->next = new_event;
+
+  return;
+}
+
+event* ExtractEvent(event **list)
+{
+  event* next_event = NULL;
+
+  if(*list != NULL){
+    next_event = *list;
+    *list = (*list)->next;
+  }
+
+  return next_event;
 }
 
 job* GenerateJob(double arrival, double service)
@@ -99,11 +191,11 @@ job* GenerateJob(double arrival, double service)
   return new_job;
 }
 
-int InsertJob(job** queue, job* job_to_insert) //return 0 if queue was empty, 1 otherwise
+void InsertJob(job** queue, job* job_to_insert) //return 0 if queue was empty, 1 otherwise
 {
   if(*queue == NULL){
     *queue = job_to_insert;
-    return 0;
+    return;
   }
 
   job *aux = *queue;
@@ -112,7 +204,7 @@ int InsertJob(job** queue, job* job_to_insert) //return 0 if queue was empty, 1 
   }
   aux->next = job_to_insert;
 
-  return 1;
+  return;
 }
 
 job* ExtractJob(job **queue)
@@ -127,336 +219,220 @@ job* ExtractJob(job **queue)
   return served_job;
 }
 
-next_event FindFirstEvent(event_list **events){ //find first 'active' event in the list
-  next_event ev = {0, 0};
-  for(int k=0; k<NODES; k++){
-    for(int i=0; i <= servers_num[k]; i++){
-      if(events[k][i].status == 1){
-        ev.node = k;
-        ev.server = i;
-        return ev;
-      }
-    }
-  }
-}
+void init_event_list(event **list){
+  double arrival_1 = GetArrival(exterior_wash);
+  double arrival_2 = GetArrival(interior_wash);
 
-next_event NextEvent(event_list **events)
-{
-  next_event next = FindFirstEvent(events);
-  
-  for(int node=next.node; node<NODES; node++){
-    for(int i=0; i <= servers_num[node]; i++){ // check to find which event type is most imminent
-      if((events[node][i].status == 1) && (events[node][i].time < events[next.node][next.server].time)){
-        next.node = node;
-        next.server = i;
-      }
-    }
+  event *exterior_wash_arrival = GenerateEvent(job_arrival, exterior_wash, ext_arr, arrival_1);
+  event *interior_wash_arrival = GenerateEvent(job_arrival, interior_wash, ext_arr, arrival_2);
+
+  if(arrival_1 < arrival_2){
+    InsertEvent(list, exterior_wash_arrival);
+    InsertEvent(list, interior_wash_arrival);
+  }
+  else{
+    InsertEvent(list, interior_wash_arrival);
+    InsertEvent(list, exterior_wash_arrival);
   }
 
-  return next;
+  printf("%lf - %lf\n", exterior_wash_arrival->time, interior_wash_arrival->time);
 }
 
-int FindServer(event_list **event, node k)
-{
-  int s;
-  int i = 1;
-
-  while(event[k][i].status == 1){     // find the processed_jobs of the first available
-    i++;                              // (idle) server
-  }       
-  s = i;
-  while(i < servers_num[k]){          // now, check the others to find which
-    i++;                              // has been idle longest
-    if((event[k][i].status == 0) && (event[k][i].time < event[k][s].time)){
-      s = i;
-    }
+void init_servers(server_stats **servers, int servers_num){
+  *servers = calloc(servers_num, sizeof(server_stats));
+  if(*servers == NULL){
+    printf("Error allocating memory for: server_stats\n");
+    exit(1);
   }
-
-  return s;
+  (*servers)->status = 1;
 }
 
-int SwitchFromNodeOne(double p)
-{
-  if(p < 0 || p > 1){
-    printf("Parameter 'p' must be between 0 and 1\n");
-    exit(0);
-  }
-
-  SelectStream(NODES * 2);
-  if(Random() < p) return 1;  // switch to node 2
-  return 0;                   // switch to node 3
-}
-
-void event_list_init(event_list ***list){
-  *list = malloc(NODES * sizeof(event_list*));
-  if(*list == NULL){
-    printf("Error allocating memory for: event_list\n");
+void init_nodes(node_stats **nodes){
+  *nodes = calloc(NODES, sizeof(node_stats));
+  if(*nodes == NULL){
+    printf("Error allocating memory for: nodes_stats\n");
     exit(1);
   }
   for(int i=0; i<NODES; i++){
-    (*list)[i] = malloc((servers_num[i] + 1) * sizeof(event_list));
-    if((*list)[i] == NULL){
-      printf("Error allocating memory for: event_list\n");
-      exit(2);
-    }
-    (*list)[i][0].time = GetArrival(i);
-    (*list)[i][0].status = 1;
-    for(int s=1; s<=servers_num[i]; s++) {
-      (*list)[i][s].time = START;
-      (*list)[i][s].status = 0;
-    }
+    (*nodes)[i].total_servers = servers_num[i];
+    init_servers(&((*nodes)[i].servers), servers_num[i]);
   }
 }
 
-void sum_init(accumulated_sums ***list){
-  *list = malloc(NODES * sizeof(accumulated_sums*));
-  if(*list == NULL){
-    printf("Error allocating memory for: accumulated_sums\n");
+void init_areas(time_integrated **areas){
+  *areas = calloc(NODES, sizeof(time_integrated));
+  if(*areas == NULL){
+    printf("Error allocating memory for: time_integrated\n");
     exit(1);
-  }
-  for(int i=0; i<NODES; i++){
-    (*list)[i] = calloc(servers_num[i] + 1, sizeof(accumulated_sums));
-    if((*list)[i] == NULL){
-      printf("Error allocating memory for: accumulated_sums\n");
-      exit(2);
-    }
-  }
-}
-
-void queue_init(job ***list){
-  *list = malloc(NODES * sizeof(job*));
-  if(*list == NULL){
-    printf("Error allocating memory for: job_queue\n");
-    exit(1);
-  }
-  for(int i=0; i<NODES; i++){
-    (*list)[i] = calloc(servers_num[i] + 1, sizeof(job*));
-    if((*list)[i] == NULL){
-      printf("Error allocating memory for: job_queue\n");
-      exit(2);
-    }
-  }
-}
-
-void serving_job_init(job ****list){
-  *list = malloc(NODES * sizeof(job**));
-  if(*list == NULL){
-    printf("Error allocating memory for: serving_job\n");
-    exit(1);
-  }
-  for(int i=0; i<NODES; i++){
-    (*list)[i] = calloc(servers_num[i] + 1, sizeof(job*));
-    if((*list)[i] == NULL){
-      printf("Error allocating memory for: serving_job\n");
-      exit(2);
-    }
   }
 }
 
 int main(void)
 {
-  analysis result[NODES];
-  time t;
-  event_list **event;
-  next_event next_ev;
-  long spawned_jobs[NODES] = {0, 0, 0};
-  long node_jobs[NODES] = {0, 0, 0};            // jobs in the node (service + queue)
-  long queue_jobs[NODES] = {0, 0, 0};           // jobs in queue
-  long processed_jobs[NODES] = {0, 0, 0};       // used to count processed jobs
-  long rejected_jobs[NODES] = {0, 0, 0};        // jobs rejected from node's queue
-  double area[NODES] = {0.0, 0.0, 0.0};         // time integrated jobs in the node
-  double delay_area[NODES] = {0.0, 0.0, 0.0};   // time integrated jobs in the queue
-  accumulated_sums **sum;
-  int actual_node, actual_server;
+  event *ev = NULL, *event_list, *new_dep, *new_arr;
+  node_stats *nodes;
+  time_integrated *areas;
+  job *job = NULL;
+  node_id actual_node;
+  int actual_server;
+  double current_time = 0, next_time;
+  int arrival_process_status[NODES] = {1, 1, 0};
 
-  job *new_job = NULL, **queue, ***serving_job;
+  PlantSeeds(seed);
+  init_event_list(&event_list);
+  init_nodes(&nodes);
+  init_areas(&areas);
 
-  double total_arrival[NODES + 1];
-  double total_service[NODES + 1];
-  double total_served[NODES + 1];
-  for(int k=0; k<NODES; k++){
-    total_arrival[k] = 0;
-    total_service[k] = 0;
-    total_served[k] = 0;
-  }
+  while(arrival_process_status[exterior_wash] != 0 || 
+        arrival_process_status[interior_wash] != 0 ||
+        arrival_process_status[checkout] != 0 ||
+        nodes[exterior_wash].node_jobs > 0 || nodes[interior_wash].node_jobs > 0 || nodes[checkout].node_jobs > 0){ // && there are jobs in the system (in one of his nodes)
+    printf("AAAA\n");
+    ev = ExtractEvent(&event_list);
+    if(ev == NULL) printf("è NULL\n");
+    actual_node = ev->node;
+    actual_server = ev->server;
 
-  PlantSeeds(13);
-  t.current = START;
-  event_list_init(&event);
-  event[node_3][0].time = INFINITY;            //node_3 has no external arrivals
-  event[node_3][0].status = 0;
-  sum_init(&sum);
-  queue_init(&queue);
-  serving_job_init(&serving_job);
-
-  while(event[node_1][0].status != 0 || event[node_2][0].status != 0 || node_jobs[node_1] > 0 || node_jobs[node_2] > 0 || node_jobs[node_3] > 0) {
-    next_ev = NextEvent(event);                             // next event scheduled
-    actual_node = next_ev.node;
-    actual_server = next_ev.server;
-    t.next = event[actual_node][actual_server].time;        // next event time
     for(int node=0; node<NODES; node++){
-      area[node] += (t.next - t.current) * node_jobs[node];
-      delay_area[node] += (t.next - t.current) * queue_jobs[node];
+      areas[actual_node].node_area += (next_time - current_time) * nodes[actual_node].node_jobs;
+      areas[actual_node].queue_area += (next_time - current_time) * nodes[actual_node].queue_jobs;
     }
-    t.current = t.next;                                     // advance the clock
+    current_time = ev->time;
+    printf("bbbb\n");
+    if(ev->type == job_arrival){ // process an arrival
+      external_arrivals++;
+      nodes[actual_node].arrived_jobs++;
+      if(nodes[actual_node].queue_jobs < queue_len[actual_node]){ // there is availble space in queue
+        job = GenerateJob(current_time, GetService(actual_node));
+        if(nodes[actual_node].node_jobs < servers_num[actual_node]){
+          printf("cccc\n");
+          int selected_server = SelectServer(nodes[actual_node]); // find available server
+          nodes[actual_node].servers[selected_server].status = 1;
+          nodes[actual_node].servers[selected_server].serving_job = job;
+          new_dep = GenerateEvent(job_departure, actual_node, selected_server, job->service);
+          InsertEvent(&event_list, new_dep);
+          printf("dddd\n");
+        }
+        else{ // insert job in queue
+          InsertJob(&(nodes[actual_node].queue), job);
+          nodes[actual_node].queue_jobs++;
+          printf("eeee\n");
+        }
+        nodes[actual_node].node_jobs++;
+        nodes[actual_node].last_arrival = current_time;
+      }
+      else{ // reject the job
+        nodes[actual_node].rejected_jobs++;
+      }
 
-    if(actual_server == 0){                                 // process an arrival
-      
-      // da mettere in un metodo e gli passiamo il nodo con tutti i dati
-      new_job = GenerateJob(t.current, GetService(actual_node));
-      spawned_jobs[actual_node]++;
-      if(queue_jobs[actual_node] < queue_len[actual_node]) {  // there is space in queue so we can add a job
-        node_jobs[actual_node]++;
-        t.last_arrival[actual_node] = t.current;
-        if(node_jobs[actual_node] <= servers_num[actual_node]){
-          actual_server = FindServer(event, actual_node);
-          serving_job[actual_node][actual_server] = new_job;
-          event[actual_node][actual_server].time = t.current + serving_job[actual_node][actual_server]->service;
-          event[actual_node][actual_server].status = 1;
+      if(actual_server == ext_arr && arrival_process_status[actual_node] == 1){ // if an external arrival is handled
+        new_arr = GenerateEvent(job_arrival, actual_node, ext_arr, GetArrival(actual_node)); // generate next arrival event
+        printf("actual node = %d\n", actual_node);
+        if(new_arr->time < STOP && external_arrivals < max_processable_jobs){ // schedule event only on condition
+          InsertEvent(&event_list, new_arr);
         }
         else{
-          InsertJob(&(queue[actual_node]), new_job);
-          queue_jobs[actual_node]++;
+          arrival_process_status[actual_node] = 0;
         }
-        // increment total arrival time after dispatching the new job
-        total_arrival[actual_node] += new_job->arrival - START;
       }
-      else rejected_jobs[actual_node]++;
-      /////////
-
-      event[actual_node][0].time = GetArrival(actual_node);
-      if(event[actual_node][0].time > STOP || spawned_jobs[actual_node] >= max_processable_jobs[actual_node]){
-        event[actual_node][0].status = 0;
-      }
+      printf("gggg\n");
     }
-    else{ //process a departure from server 's'
-      sum[actual_node][actual_server].service += serving_job[actual_node][actual_server]->service;
-      sum[actual_node][actual_server].served++;
-      processed_jobs[actual_node]++;
-      node_jobs[actual_node]--;
-      free(serving_job[actual_node][actual_server]);
+    else{ //process a departure from selected server
+      actual_server = ev->server;
+      double service = nodes[actual_node].servers[actual_server].serving_job->service;
+      nodes[actual_node].servers[actual_server].service_time += service;
+      nodes[actual_node].servers[actual_server].served_jobs++;
+      nodes[actual_node].servers[actual_server].last_departure_time = current_time;
 
-      if(node_jobs[actual_node] >= servers_num[actual_node]){
-        serving_job[actual_node][actual_server] = ExtractJob(&(queue[actual_node]));
-        event[actual_node][actual_server].time = t.current + serving_job[actual_node][actual_server]->service;
-        queue_jobs[actual_node]--;
+      nodes[actual_node].processed_jobs++;
+      nodes[actual_node].node_jobs--;
+      free(nodes[actual_node].servers[actual_server].serving_job);
+      printf("hhhh\n");
+      if(nodes[actual_node].queue_jobs > 0){
+        printf("nodes[actual_node].queue_jobs = %d\n", nodes[actual_node].queue_jobs);
+        printf("job arrival = %lf\n", nodes[actual_node].queue->arrival);
+        job = ExtractJob(&(nodes[actual_node].queue));
+        printf("iiii\n");
+        nodes[actual_node].servers[actual_server].serving_job = job;
+        nodes[actual_node].queue--;
+
+        new_dep = GenerateEvent(job_departure, actual_node, actual_server, job->service);
+        InsertEvent(&event_list, new_dep);
+        printf("llll\n");
       }
-      else event[actual_node][actual_server].status = 0;
-
-
-      // send event to next node (2 or 3)
-      if(actual_node == node_1) {
-        if(SwitchFromNodeOne(p)) {
-          new_job = GenerateJob(t.current, GetService(node_2));
-          spawned_jobs[node_2]++;
-          if(queue_jobs[node_2] < queue_len[node_2]) {  // there is space in queue so we can add a job
-            node_jobs[node_2]++;
-
-            // check if dispatched event is previous than new arrival on node 2
-            if (t.last_arrival[node_2] < t.current) t.last_arrival[node_2] = t.current;
-            
-            if(node_jobs[node_2] <= servers_num[node_2]){
-              actual_server = FindServer(event, node_2);
-              serving_job[node_2][actual_server] = new_job;
-              event[node_2][actual_server].time = t.current + serving_job[node_2][actual_server]->service;
-              event[node_2][actual_server].status = 1;
-            }
-            else{
-              InsertJob(&(queue[node_2]), new_job);
-              queue_jobs[node_2]++;
-            }
-            total_arrival[node_2] += new_job->arrival - START;
-          }
-          else rejected_jobs[node_2]++;
+      else{
+        nodes[actual_node].servers[actual_server].status = 0;
+      }
+      
+      if(actual_node == exterior_wash) { // if departure is from external_wash
+        if(SwitchFromNodeOne(p)){ // switch to interior_wash
+          new_arr = GenerateEvent(job_arrival, interior_wash, actual_server, current_time);
+          InsertEvent(&event_list, new_arr);
+          printf("mmmm\n");
         }
-        else {
-          new_job = GenerateJob(t.current, GetService(node_3));
-          spawned_jobs[node_3]++;
-          if(queue_jobs[node_3] < queue_len[node_3]) {  // there is space in queue so we can add a job
-            node_jobs[node_3]++;
-            t.last_arrival[node_3] = t.current;
-            if(node_jobs[node_3] <= servers_num[node_3]){
-              actual_server = FindServer(event, node_3);
-              serving_job[node_3][actual_server] = new_job;
-              event[node_3][actual_server].time = t.current + serving_job[node_3][actual_server]->service;
-              event[node_3][actual_server].status = 1;
-            }
-            else{
-              InsertJob(&(queue[node_3]), new_job);
-              queue_jobs[node_3]++;
-            }
-            total_arrival[node_3] += new_job->arrival - START;
-          }
-          else rejected_jobs[node_3]++;
+        else{ // switch to checkout
+          new_arr = GenerateEvent(job_arrival, checkout, actual_server, current_time);
+          InsertEvent(&event_list, new_arr);
+          printf("nnnn\n");
         }
       }
 
-      // event from node 2 goes directly on node 3
-      if(actual_node == node_2) {
-        new_job = GenerateJob(t.current, GetService(node_3));
-        spawned_jobs[node_3]++;
-        if(queue_jobs[node_3] < queue_len[node_3]) {  // there is space in queue so we can add a job
-          node_jobs[node_3]++;
-
-          // check if dispatched event is previous than new arrival on node 3
-          if (t.last_arrival[node_3] < t.current) t.last_arrival[node_3] = t.current;
-          
-          if(node_jobs[node_3] <= servers_num[node_3]){
-            actual_server = FindServer(event, node_3);
-            serving_job[node_3][actual_server] = new_job;
-            event[node_3][actual_server].time = t.current + serving_job[node_3][actual_server]->service;
-            event[node_3][actual_server].status = 1;
-          }
-          else{
-            InsertJob(&(queue[node_3]), new_job);
-            queue_jobs[node_3]++;
-          }
-          total_arrival[node_3] += new_job->arrival - START;
-        }
-        else rejected_jobs[node_3]++;
+      if(actual_node == interior_wash) { // if departure is from interior_wash
+        new_arr = GenerateEvent(job_arrival, checkout, actual_server, current_time); // switch to checkout
+        InsertEvent(&event_list, new_arr);
+        printf("oooo\n");
       }
-
-
-
+      printf("pppp\n");
     }
+
+    free(ev);
+    printf("zzzz\n\n");
   }
+
+  double total_service[NODES];
+  double total_served[NODES];
 
   for(int k=0; k<NODES; k++){
-    for(int s=1; s<=servers_num[k]; s++){
-      total_service[k] += sum[k][s].service;
-      total_served[k] += sum[k][s].served;
+    total_service[k] = 0;
+    total_served[k] = 0;
+    for(int s=0; s<servers_num[k]; s++){
+      total_service[k] += nodes[k].servers[s].service_time;
+      total_served[k] += nodes[k].servers[s].served_jobs;
     }
   }
-  
-  for(int i=0; i<NODES; i++){
-    result[i].jobs = processed_jobs[i];
+
+  analysis result[NODES];
+  for(int i=0; i<NODES; i++){ //TODO: elimina print di debug seguenti
+    printf("processed_jobs[%d] = %ld\n", i, nodes[i].processed_jobs);
+    printf("total_served[%d] = %ld\n", i, total_served[i]);
+    result[i].jobs = nodes[i].processed_jobs;
     //result[i].interarrival = total_arrival[i] / processed_jobs[i];
-    result[i].interarrival = (t.last_arrival[i] - START) / processed_jobs[i];
-    result[i].wait = area[i] / processed_jobs[i];
-    result[i].delay = delay_area[i] / processed_jobs[i];
+    result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
+    result[i].delay = areas[i].queue_area / nodes[i].processed_jobs;
     result[i].service = total_service[i] / total_served[i];
-    result[i].Ns = area[i] / t.current;
-    result[i].Nq = delay_area[i] / t.current;
-    result[i].utilization = (total_service[i] / servers_num[i]) / t.current;
-    if(rejected_jobs[i] == 0) result[i].ploss = 0;
-    else result[i].ploss = (double) rejected_jobs[i] / spawned_jobs[i];
+    result[i].Ns = areas[i].node_area / current_time;
+    result[i].Nq = areas[i].queue_area / current_time;
+    result[i].utilization = (total_service[i] / servers_num[i]) / current_time;
+    if(nodes[i].arrived_jobs == 0) result[i].ploss = 0;
+    else result[i].ploss = (double) nodes[i].rejected_jobs / nodes[i].arrived_jobs;
   }
 
   printf("\n");
-  for(int node=0; node<NODES; node++){
-    printf("Node %d:\n", node+1);
-    printf("    processed jobs       = %ld\n", result[node].jobs);
-    printf("    avg interarrivals    = %lf\n", result[node].interarrival);
-    printf("    avg wait             = %lf\n", result[node].wait);
-    printf("    avg delay            = %lf\n", result[node].delay);
-    printf("    avg # in node        = %lf\n", result[node].Ns);
-    printf("    avg # in queue       = %lf\n", result[node].Nq);
-    printf("    utilizzation         = %lf\n", result[node].utilization);
-    printf("    ploss                = %lf\n", result[node].ploss);
+  for(int k=0; k<NODES; k++){
+    printf("Node %d:\n", k+1);
+    printf("    processed jobs       = %ld\n", result[k].jobs);
+    printf("    avg interarrivals    = %lf\n", result[k].interarrival);
+    printf("    avg wait             = %lf\n", result[k].wait);
+    printf("    avg delay            = %lf\n", result[k].delay);
+    printf("    avg # in node        = %lf\n", result[k].Ns);
+    printf("    avg # in queue       = %lf\n", result[k].Nq);
+    printf("    utilizzation         = %lf\n", result[k].utilization);
+    printf("    ploss                = %.3lf%%\n", 100 * result[k].ploss);
     printf("\n  the server statistics are:\n\n");
     printf("    server     utilization     avg service        share\n");
-    for(int s=1; s<=servers_num[node]; s++){
-      printf("%8d %14f %15f %15f\n", s, sum[node][s].service / t.current, sum[node][s].service / sum[node][s].served, (double) sum[node][s].served / processed_jobs[node]);
+    for(int s=1; s<=servers_num[k]; s++){
+      printf("%8d %14f %15f %15f\n", s, nodes[k].servers[s].service_time / current_time, nodes[k].servers[s].service_time / nodes[k].servers[s].served_jobs, (double) nodes[k].servers[s].served_jobs / nodes[k].processed_jobs);
     }
     printf("\n");
   }
