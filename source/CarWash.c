@@ -20,15 +20,20 @@ long queue_len[NODES] = {6, 8, (long) INFINITY};
 double p = 0.1;
 
 typedef enum{
-    exterior_wash,
-    interior_wash,
-    checkout
+  exterior_wash,
+  interior_wash,
+  checkout
 } node_id;
 
 typedef enum{
-    job_arrival,
-    job_departure
+  job_arrival,
+  job_departure
 } event_type;
+
+typedef enum{
+  idle,
+  busy
+} status;
 
 typedef struct {
   double node_area;                    /* time integrated jobs in the node  */
@@ -98,6 +103,7 @@ void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
 void init_areas(time_integrated**);
 void print_event_list(event*);
+void print_event(event*);
 
 int main(void)
 {
@@ -129,7 +135,7 @@ int main(void)
 
     ev = ExtractEvent(&event_list);
     printf("-------------- event extracted\n");
-    print_event_list(event_list);
+    print_event(ev);
     actual_node = ev->node;
     actual_server = ev->server;
     next_time = ev->time;
@@ -147,12 +153,11 @@ int main(void)
       if(actual_server == ext_arr){
         external_arrivals++;
       }
-      nodes[actual_node].arrived_jobs++;
       if(nodes[actual_node].queue_jobs < queue_len[actual_node]){ // there is availble space in queue
         job = GenerateJob(current_time, GetService(actual_node));
         if(nodes[actual_node].node_jobs < servers_num[actual_node]){
           int selected_server = SelectServer(nodes[actual_node]); // find available server
-          nodes[actual_node].servers[selected_server].status = 1;
+          nodes[actual_node].servers[selected_server].status = busy;
           nodes[actual_node].servers[selected_server].serving_job = job;
           new_dep = GenerateEvent(job_departure, actual_node, selected_server, current_time + job->service);
           InsertEvent(&event_list, new_dep);
@@ -171,16 +176,13 @@ int main(void)
         nodes[actual_node].rejected_jobs++;
       }
 
-      if(actual_server == ext_arr){/* && arrival_process_status[actual_node] == 1*/ // if an external arrival is handled
+      if(actual_server == ext_arr){
         new_arr = GenerateEvent(job_arrival, actual_node, ext_arr, current_time + GetInterArrival(actual_node)); // generate next arrival event
         printf("actual node = %d\n", actual_node);
         if(new_arr->time < STOP && external_arrivals < max_processable_jobs){ // schedule event only on condition
           InsertEvent(&event_list, new_arr);
           print_event_list(event_list);
         }
-        /*else{
-          arrival_process_status[actual_node] = 0;
-        }*/
       }
       printf("gggg\n");
     }
@@ -209,7 +211,7 @@ int main(void)
         printf("llll\n");
       }
       else{
-        nodes[actual_node].servers[actual_server].status = 0;
+        nodes[actual_node].servers[actual_server].status = idle;
       }
       
       if(actual_node == exterior_wash) { // if departure is from external_wash
@@ -325,13 +327,13 @@ int SelectServer(node_stats node)
   int s;
   int i = 0;
 
-  while(node.servers[i].status == 1){     // find the processed_jobs of the first available
+  while(node.servers[i].status == busy){     // find the processed_jobs of the first available
     i++;                              // (idle) server
   }       
   s = i;
   while(i < node.total_servers){ // now, check the others to find which has been idle longest
     i++;
-    if((node.servers[i].status == 0) && (node.servers[i].last_departure_time < node.servers[s].last_departure_time)){
+    if((node.servers[i].status == idle) && (node.servers[i].last_departure_time < node.servers[s].last_departure_time)){
       s = i;
     }
   }
@@ -478,6 +480,38 @@ void init_areas(time_integrated **areas){
   }
 }
 
+void print_event(event* event){
+  if(event == NULL){
+    return;
+  }
+  
+  if(event->type == job_arrival){
+    printf("event type = job_arrival\n");
+  }
+  else{
+    printf("event type = job_departure\n");
+  }
+
+  if(event->node == exterior_wash){
+    printf("event node_id = exterior_wash\n");
+  }
+  else if(event->node == interior_wash){
+    printf("event node_id = interior_wash\n");
+  }
+  else{
+    printf("event_%d node_id = checkout\n");
+  }
+
+  if(event->server != ext_arr){
+    printf("event server = %d\n", event->server);
+  }
+  else{
+    printf("event server = external_enviornment\n");
+  }
+  printf("event time = %lf\n", event->time);
+  printf("/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\\n");
+}
+
 void print_event_list(event* event_list){
   event *tmp = event_list;
   int i=1;
@@ -503,11 +537,16 @@ void print_event_list(event* event_list){
     else{
       printf("event_%d node_id = checkout\n", i);
     }
-    printf("event_%d server = %d\n", i, tmp->server);
+    if(tmp->server != ext_arr){
+      printf("event_%d server = %d\n", i, tmp->server);
+    }
+    else{
+      printf("event_%d server = external_enviornment\n", i);
+    }
     printf("event_%d time = %lf\n", i, tmp->time);
     tmp = tmp->next;
     i++;
-    printf("____________\n");
+    printf("_-_-_-_-_-_-_-_-_-_-_-_-_\n");
   }
   printf("\n");
 }
