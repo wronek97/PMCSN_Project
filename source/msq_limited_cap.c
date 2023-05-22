@@ -8,8 +8,9 @@
 #define STOP     20000.0                /* terminal (close the door) time */
 #define SERVERS  1                      /* number of servers              */
 
-double lambda = 1.754;
+double lambda = 2.0;
 double mu = 3.0;
+int queue_len = 2;
 double arrival = START;
 
 typedef struct {                        /* the next-event list    */
@@ -29,7 +30,7 @@ double GetService(void)
 {                 
   SelectStream(1);
 
-  return Exponential(1.0/(3.0/SERVERS));    
+  return Exponential(1.0/(mu/SERVERS));    
 }
 
 
@@ -77,6 +78,7 @@ int main(void)
   } t;
   event_list event;
   long number = 0;                   /* number in the node                 */
+  long rejected = 0;
   int e;                             /* next event index                   */
   int s;                             /* server index                       */
   long index = 0;                    /* used to count processed jobs       */
@@ -104,19 +106,24 @@ int main(void)
     t.current = t.next;                            /* advance the clock*/
 
     if(e == 0){                                  /* process an arrival*/
-      number++;
+      if(number <= queue_len){
+        if(number < SERVERS){
+          double service = GetService();
+          s = FindServer(event);
+          sum[s].service += service;
+          sum[s].served++;
+          event[s].t = t.current + service;
+          event[s].x = 1;
+        }
+        number++;
+      }
+      else{
+        rejected++;
+      }
       event[0].t = GetArrival();
-      if (event[0].t > STOP){
-        event[0].x = 0;
-      }
-      if(number <= SERVERS){
-        double service = GetService();
-        s = FindServer(event);
-        sum[s].service += service;
-        sum[s].served++;
-        event[s].t = t.current + service;
-        event[s].x = 1;
-      }
+        if (event[0].t > STOP){
+          event[0].x = 0;
+        }
     }
     else {                                         /* process a departure */
       index++;                                     /* from server s       */  
@@ -145,6 +152,7 @@ int main(void)
 
   printf("  avg delay .......... = %6.4lf\n", area / index);
   printf("  avg # in queue ..... = %6.4lf\n", area / t.current);
+  printf("  ploss .............. = %6.3lf\n", (double) rejected * 100 / (rejected + index));
   printf("\nthe server statistics are:\n\n");
   printf("    server     utilization     avg service        share\n");
   for (s = 1; s <= SERVERS; s++){

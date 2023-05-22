@@ -5,7 +5,7 @@
 #include "rvgs.h"
 
 #define START             0.0         // initial (open the door) time
-#define STOP              720.0       // terminal (close the door) time
+#define STOP              72000.0       // terminal (close the door) time
 #define NODES             3           // number of nodes in the system
 #define INFINITE_CAPACITY 999999      // large number to simulate infinite queue
 #define outside           2023        /* variable to distinguish external and internal arrivals 
@@ -15,16 +15,17 @@ int seed = 13;
 unsigned external_arrivals = 0;
 unsigned long max_processable_jobs = 1 << 25;
 
-double lambda[NODES] = {0.25, 0.15, 0.0};
-double mu[NODES] = {0.2, 0.1, 2.0};
-int servers_num[NODES] = {1, 2, 1};
+double lambda[NODES] = {1.6, 0.0, 0.0};
+double mu[NODES] = {2.0, 0.2, 0.1};
+int servers_num[NODES] = {1, 8, 7};
 unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY};
-double p = 0.1;
+double p[3] = {0.68, 0.22, 0.1};
 
 typedef enum{
+  checkout,
   exterior_wash,
   interior_wash,
-  checkout
+  system_exit
 } node_id;
 
 typedef enum{
@@ -90,7 +91,7 @@ typedef struct {
 
 double GetInterArrival(node_id);
 double GetService(node_id);
-int SwitchFromNodeOne(double);
+int SwitchFromNode(double*, node_id);
 int SelectServer(node_stats);
 event* GenerateEvent(event_type, node_id, int, double);
 void InsertEvent(event**, event*);
@@ -184,24 +185,20 @@ int main(void)
         nodes[actual_node].servers[actual_server].status = idle;
       }
       
-      if(actual_node == exterior_wash) { // if departure is from external_wash
-        if(SwitchFromNodeOne(p)){ // switch to interior_wash
-          new_arr = GenerateEvent(job_arrival, interior_wash, actual_server, current_time);
-          InsertEvent(&event_list, new_arr);
-        }
-        else{ // switch to checkout
-          new_arr = GenerateEvent(job_arrival, checkout, actual_server, current_time);
-          InsertEvent(&event_list, new_arr);
-        }
+      int switch_node = SwitchFromNode(p, actual_node);
+      if(actual_node == checkout && switch_node != system_exit) { // if departure is from checkout
+        new_arr = GenerateEvent(job_arrival, switch_node, actual_server, current_time);
+        InsertEvent(&event_list, new_arr);
       }
-      else if(actual_node == interior_wash) { // if departure is from interior_wash
-        new_arr = GenerateEvent(job_arrival, checkout, actual_server, current_time); // switch to checkout
+      else if(actual_node == exterior_wash && switch_node != system_exit) { // if departure is from external_wash
+        new_arr = GenerateEvent(job_arrival, switch_node, actual_server, current_time); // switch to checkout
         InsertEvent(&event_list, new_arr);
       }
     }
 
     free(ev);
   }
+  printf("To clear the jobs left in the queue, the system ran for %.2lf minutes after close\n", current_time - STOP);
 
   double total_service[NODES];
   long total_served[NODES];
@@ -237,7 +234,7 @@ int main(void)
   for(int k=0; k<NODES; k++){
     printf("Node %d:\n", k+1);
     printf("    processed jobs       = %ld\n", result[k].jobs);
-    printf("    avg interarrival    = %lf\n", result[k].interarrival);
+    printf("    avg interarrival     = %lf\n", result[k].interarrival);
     printf("    avg wait             = %lf\n", result[k].wait);
     printf("    avg delay            = %lf\n", result[k].delay);
     printf("    avg service          = %lf\n", result[k].service);
@@ -271,18 +268,34 @@ double GetService(node_id k)
   return Exponential(1.0/(mu[k]));    
 }
 
-int SwitchFromNodeOne(double p)
+int SwitchFromNode(double *prob, node_id node)
 {
-  if(p < 0 || p > 1){
-    printf("Parameter 'p' must be between 0 and 1\n");
+  double tmp = 0;
+  for(int i=0; i<3; i++){
+    tmp += p[i];
+  }
+  if(tmp != 1){
+    printf("Parameters 'p' must be between 0 and 1\n");
     exit(0);
   }
 
-  SelectStream(NODES * 2);
-  if(Random() < p){ // switch to interior_wash node
-    return 1;           
+  SelectStream(NODES * 2 + node);
+
+  if(node == checkout){
+    if(Random() < prob[1]){ // switch to interior_wash node
+      return interior_wash;           
+    }
+    else{ 
+      return exterior_wash; // switch to exterior_wash node
+    }
   }
-  return 0;         // switch to checkout node
+  else if(node == exterior_wash){
+    if(Random() < prob[2] / (prob[0] + prob[2])){ // switch to interior_wash node
+      return interior_wash;           
+    }
+  }
+
+  return system_exit;
 }
 
 int SelectServer(node_stats node) // find the processed_jobs of the first available (idle) server
