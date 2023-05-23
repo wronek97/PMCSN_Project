@@ -49,7 +49,7 @@ int main(void)
   long index  = 0;                  /* used to count departed jobs         */
   long number = 0;                  /* jobs in the node                  */
   long rejected = 0;
-  long queue_len = 0;
+  long queue_len = 2;
 
   PlantSeeds(13);
   t.current    = START;           /* set the clock                         */
