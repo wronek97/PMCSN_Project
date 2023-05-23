@@ -15,40 +15,63 @@
 
 #include <math.h>
 #include <stdio.h>
+#include "rngs.h"
+#include "rvgs.h"
 #include "rvms.h"
 
-#define LOC 0.95                       /* level of confidence,        */ 
-                                       /* use 0.95 for 95% confidence */
+#define MAX_DATA 10000
+#define METRICS_NUM 3
+#define LOC 0.99                       /* level of confidence, use 0.95 for 95% confidence */
 
-  int main(void)
+double f[METRICS_NUM] = {2.0, 0.5, 0.666};
+
+int main(void)
 {
   long   n    = 0;                     /* counts data points */
-  double sum  = 0.0;
-  double mean = 0.0;
-  double data;
-  double stdev;
-  double u, t, w;
+  double sum[METRICS_NUM];
+  double mean[METRICS_NUM];
+  double stdev[METRICS_NUM];
+  double u, t, w[METRICS_NUM];
   double diff;
 
-  while (!feof(stdin)) {                 /* use Welford's one-pass method */
-    scanf("%lf\n", &data);               /* to calculate the sample mean  */
-    n++;                                 /* and standard deviation        */
-    diff  = data - mean;
-    sum  += diff * diff * (n - 1.0) / n;
-    mean += diff / n;
+  for(int i=0; i<METRICS_NUM; i++){
+    sum[i] = 0;
+    mean[i] = 0;
   }
-  stdev  = sqrt(sum / n);
 
-  if (n > 1) {
-    u = 1.0 - 0.5 * (1.0 - LOC);              /* interval parameter  */
-    t = idfStudent(n - 1, u);                 /* critical value of t */
-    w = t * stdev / sqrt(n - 1);              /* interval half width */
-    printf("\nbased upon %ld data points", n);
-    printf(" and with %d%% confidence\n", (int) (100.0 * LOC + 0.5));
-    printf("the expected value is in the interval");
-    printf("%10.2f +/- %6.2f\n", mean, w);
+  PlantSeeds(13);
+
+  for(int i=0; i<METRICS_NUM; i++){                 /* use Welford's one-pass method and standard deviation        */
+    SelectStream(i);
+    n = 0;
+    for(int j=0; j<MAX_DATA; j++){
+      n++;
+      diff  = Exponential(1/f[i]) - mean[i];
+      sum[i]  += diff * diff * (n - 1.0) / n;
+      mean[i] += diff / n;
+    }
   }
-  else
-    printf("ERROR - insufficient data\n");
+  for(int j=0; j<METRICS_NUM; j++){
+    stdev[j]  = sqrt(sum[j] / MAX_DATA);
+  }
+
+  u = 1.0 - 0.5 * (1.0 - LOC);                      /* interval parameter  */
+  t = idfStudent(MAX_DATA - 1, u);                  /* critical value of t */
+  for(int j=0; j<METRICS_NUM; j++){
+    if(MAX_DATA > 1){
+      w[j] = t * stdev[j] / sqrt(MAX_DATA - 1);     /* interval half width */
+    }
+    else{
+      printf("ERROR - insufficient data\n");
+    }
+  }
+
+  printf("based upon %ld data points", MAX_DATA);
+  printf(" and with %d%% confidence:\n", (int) (100.0 * LOC + 0.5));
+
+  printf("  avg interarrival = %lf +/- %lf\n", mean[0], w[0]);
+  printf("  avg delay        = %lf +/- %lf\n", mean[1], w[1]);
+  printf("  avg wait         = %lf +/- %lf\n", mean[2], w[2]);
+
   return (0);
 }
