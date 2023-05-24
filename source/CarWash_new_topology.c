@@ -18,7 +18,7 @@ unsigned long max_processable_jobs = 1 << 25;
 double lambda[NODES] = {1.6, 0.0, 0.0};
 double mu[NODES] = {2.0, 0.2, 0.1};
 int servers_num[NODES] = {1, 8, 7};
-unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY};
+unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, 5};
 double p[3] = {0.68, 0.22, 0.1};
 
 typedef enum{
@@ -198,7 +198,7 @@ int main(void)
 
     free(ev);
   }
-  printf("To clear the jobs left in the queue, the system ran for %.2lf minutes after close\n", current_time - STOP);
+  printf("To clear queued jobs , the system ran for %.2lf minutes after close\n", current_time - STOP);
 
   double total_service[NODES];
   long total_served[NODES];

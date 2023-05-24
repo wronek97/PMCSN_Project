@@ -6,7 +6,7 @@
 
 #define START    0.0                    /* initial (open the door)        */
 #define STOP     20000.0                /* terminal (close the door) time */
-#define SERVERS  1                      /* number of servers              */
+#define SERVERS  4                      /* number of servers              */
 
 double lambda = 2.0;
 double mu = 3.0;
@@ -106,7 +106,7 @@ int main(void)
     t.current = t.next;                            /* advance the clock*/
 
     if(e == 0){                                  /* process an arrival*/
-      if(number <= queue_len){
+      if(number < SERVERS + queue_len){
         if(number < SERVERS){
           double service = GetService();
           s = FindServer(event);

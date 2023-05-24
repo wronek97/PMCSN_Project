@@ -5,7 +5,7 @@
 #include "rvgs.h"
 
 #define START         0.0              /* initial time                   */
-#define STOP      20000.0              /* terminal (close the door) time */
+#define STOP      200000.0              /* terminal (close the door) time */
 #define INFINITY   (100.0 * STOP)      /* must be much larger than STOP  */
 #define PROCESSABLE_JOBS  999999
 
@@ -94,7 +94,7 @@ int main(void)
     }
   } 
 
-  printf("\nfor %ld jobs\n", index);
+  printf("\nfor %ld jobs processed on %ld arrived\n", index, index + rejected);
   printf("   average interarrival time = %.4lf\n", t.last / index);
   printf("   average wait ............ = %.4lf\n", area.node / index);
   printf("   average delay ........... = %.4lf\n", area.queue / index);
