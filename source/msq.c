@@ -6,9 +6,9 @@
 
 #define START    0.0                    /* initial (open the door)        */
 #define STOP     20000.0                /* terminal (close the door) time */
-#define SERVERS  1                      /* number of servers              */
+#define SERVERS  4                      /* number of servers              */
 
-double lambda = 1.754;
+double lambda = 2.0;
 double mu = 3.0;
 double arrival = START;
 

@@ -5,27 +5,26 @@
 #include "rvgs.h"
 
 #define START             0.0         // initial (open the door) time
-#define STOP              72000.0       // terminal (close the door) time
-#define NODES             3           // number of nodes in the system
+#define STOP              86400.0       // terminal (close the door) time
+#define NODES             4           // number of nodes in the system
 #define INFINITE_CAPACITY 999999      // large number to simulate infinite queue
-#define outside           2023        /* variable to distinguish external and internal arrivals 
-                                         must be > max(all servers_num[node]) */
 
 int seed = 13;
 unsigned external_arrivals = 0;
 unsigned long max_processable_jobs = 1 << 25;
 
-double lambda[NODES] = {1.6, 0.0, 0.0};
-double mu[NODES] = {2.0, 0.2, 0.1};
-int servers_num[NODES] = {1, 8, 7};
-unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, 5};
-double p[3] = {0.68, 0.22, 0.1};
+double lambda[NODES] = {0.5, 0.35, 0.0, 0.0};
+double mu[NODES] = {0.1, 0.25, 0.2, 0.5};
+int servers_num[NODES] = {7, 3, 3, 1};
+unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY, 8};
+double p[2] = {0.3, 0.2};
 
 typedef enum{
-  checkout,
-  exterior_wash,
-  interior_wash,
-  system_exit
+  primary_process,
+  polishing_process,
+  galvanizing_process,
+  quality_control,
+  outside = INFINITE_CAPACITY
 } node_id;
 
 typedef enum{
@@ -103,8 +102,6 @@ void init_event_list(event**);
 void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
 void init_areas(time_integrated**);
-void print_event(event*);
-void print_event_list(event*);
 
 int main(void)
 {
@@ -186,19 +183,13 @@ int main(void)
       }
       
       node_id switch_node = SwitchNode(p, actual_node);
-      if(actual_node == checkout) { // if departure is from checkout
-        new_arr = GenerateEvent(job_arrival, switch_node, actual_server, current_time);
-        InsertEvent(&event_list, new_arr);
-      }
-      else if(actual_node == exterior_wash) { // if departure is from external_wash
-        new_arr = GenerateEvent(job_arrival, switch_node, actual_server, current_time);
-        InsertEvent(&event_list, new_arr);
-      }
+      new_arr = GenerateEvent(job_arrival, switch_node, actual_server, current_time);
+      InsertEvent(&event_list, new_arr);
     }
 
     free(ev);
   }
-  printf("To clear queued jobs, the system ran for %.2lf minutes after close\n", current_time - STOP);
+  printf("To clear queued jobs, the system ran for %.2lf seconds after close\n", current_time - STOP);
 
   double total_service[NODES];
   long total_served[NODES];
@@ -271,38 +262,34 @@ double GetService(node_id k)
 node_id SwitchNode(double *prob, node_id start_node)
 {
   node_id destination_node;
-  double tmp = 0;
-  for(int i=0; i<3; i++){
-    tmp += p[i];
-  }
-  if(tmp != 1){
-    printf("Parameters 'p' must be between 0 and 1\n");
-    exit(0);
-  }
 
   SelectStream(NODES * 2 + start_node);
 
   switch(start_node){
-    case checkout:
-      if(Random() < prob[1]){
-        destination_node = interior_wash;
+    case primary_process:
+      if(Random() < prob[0]){
+        destination_node = polishing_process;
       }
       else{
-        destination_node = exterior_wash;
+        destination_node = galvanizing_process;
       }
       break;
 
-    case exterior_wash:
-      if(Random() < prob[2] / (prob[0] + prob[2])){ // switch to interior_wash node
-        destination_node = interior_wash;           
+    case polishing_process:
+      if(Random() < prob[1]){
+        destination_node = galvanizing_process;           
       }
       else{
-        destination_node = system_exit;
+        destination_node = quality_control;
       }
+      break;
+    
+    case galvanizing_process:
+      destination_node = quality_control;
       break;
 
     default:
-      destination_node = system_exit;
+      destination_node = outside;
       break;
   }
 
@@ -481,75 +468,4 @@ void init_areas(time_integrated **areas){
     printf("Error allocating memory for: time_integrated\n");
     exit(1);
   }
-}
-
-void print_event(event* event){
-  if(event == NULL){
-    return;
-  }
-  
-  if(event->type == job_arrival){
-    printf("event type = job_arrival\n");
-  }
-  else{
-    printf("event type = job_departure\n");
-  }
-
-  if(event->node == exterior_wash){
-    printf("event node_id = exterior_wash\n");
-  }
-  else if(event->node == interior_wash){
-    printf("event node_id = interior_wash\n");
-  }
-  else{
-    printf("event node_id = checkout\n");
-  }
-
-  if(event->server != outside){
-    printf("event server = %d\n", event->server);
-  }
-  else{
-    printf("event server = external_enviornment\n");
-  }
-  printf("event time = %lf\n", event->time);
-  printf("/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\\n");
-}
-
-void print_event_list(event* event_list){
-  event *tmp = event_list;
-  int i=1;
-
-  if(event_list == NULL){
-    return;
-  }
-  
-  while(tmp != NULL){
-    if(tmp->type == job_arrival){
-      printf("event_%d type = job_arrival\n", i);
-    }
-    else{
-      printf("event_%d type = job_departure\n", i);
-    }
-
-    if(tmp->node == exterior_wash){
-      printf("event_%d node_id = exterior_wash\n", i);
-    }
-    else if(tmp->node == interior_wash){
-      printf("event_%d node_id = interior_wash\n", i);
-    }
-    else{
-      printf("event_%d node_id = checkout\n", i);
-    }
-    if(tmp->server != outside){
-      printf("event_%d server = %d\n", i, tmp->server);
-    }
-    else{
-      printf("event_%d server = external_enviornment\n", i);
-    }
-    printf("event_%d time = %lf\n", i, tmp->time);
-    tmp = tmp->next;
-    i++;
-    printf("_-_-_-_-_-_-_-_-_-_-_-_-_\n");
-  }
-  printf("\n");
 }
