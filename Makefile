@@ -11,7 +11,7 @@ all:
 	$(CC) $(SRCDIR)msq_priority.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_priority $(LIBS)
 	$(CC) $(SRCDIR)msq_size.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_size $(LIBS)
 	$(CC) $(SRCDIR)msq_sjf.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_sjf $(LIBS)
-	$(CC) $(SRCDIR)MetalPartsProduction.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)MetalPartsProduction $(LIBS)
+	$(CC) $(SRCDIR)MetalPartsProduction.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(SRCDIR)rvms.c $(OUTDIR)MetalPartsProduction $(LIBS)
 ssq:
 	mkdir -p $(OUTDIR)
 	$(CC) $(SRCDIR)ssq3.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)ssq $(LIBS)
@@ -32,7 +32,7 @@ sjf:
 	$(CC) $(SRCDIR)msq_sjf.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_sjf $(LIBS)
 project:
 	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)MetalPartsProduction.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)MetalPartsProduction $(LIBS)
+	$(CC) $(SRCDIR)MetalPartsProduction.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c $(SRCDIR)rvms.c -o $(OUTDIR)MetalPartsProduction $(LIBS)
 
 clean:
 	rm -f -r $(OUTDIR)

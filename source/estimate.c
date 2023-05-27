@@ -66,8 +66,7 @@ int main(void)
     }
   }
 
-  printf("based upon %ld data points", MAX_DATA);
-  printf(" and with %d%% confidence:\n", (int) (100.0 * LOC + 0.5));
+  printf("based upon %ld data points and with %d%% confidence:\n", MAX_DATA, (int) (100.0 * LOC + 0.5));
 
   printf("  avg interarrival = %lf +/- %lf\n", mean[0], w[0]);
   printf("  avg delay        = %lf +/- %lf\n", mean[1], w[1]);
