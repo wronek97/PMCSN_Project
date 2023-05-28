@@ -5,34 +5,21 @@ OUTDIR=bin/
 
 all:
 	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)msq.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq $(LIBS)
-	$(CC) $(SRCDIR)ssq3.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)ssq $(LIBS)
-	$(CC) $(SRCDIR)msq_limited_cap.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_limited_cap $(LIBS)
-	$(CC) $(SRCDIR)msq_priority.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_priority $(LIBS)
-	$(CC) $(SRCDIR)msq_size.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_size $(LIBS)
-	$(CC) $(SRCDIR)msq_sjf.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_sjf $(LIBS)
-	$(CC) $(SRCDIR)MetalPartsProduction.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(SRCDIR)rvms.c $(OUTDIR)MetalPartsProduction $(LIBS)
-ssq:
+	$(CC) $(SRCDIR)MicroservicesApp.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c $(SRCDIR)rvms.c -o $(OUTDIR)MicroservicesApp $(LIBS)
+	$(CC) $(SRCDIR)MicroservicesApp_resized.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c $(SRCDIR)rvms.c -o $(OUTDIR)MicroservicesApp_resized $(LIBS)
+	$(CC) $(SRCDIR)MicroservicesApp_improved.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c $(SRCDIR)rvms.c -o $(OUTDIR)MicroservicesApp_improved $(LIBS)
+
+initial:
 	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)ssq3.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)ssq $(LIBS)
-msq:
+	$(CC) $(SRCDIR)MicroservicesApp.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c $(SRCDIR)rvms.c -o $(OUTDIR)MicroservicesApp $(LIBS)
+	
+resized:
 	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)msq.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq $(LIBS)
-limited_cap:
+	$(CC) $(SRCDIR)MicroservicesApp_resized.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c $(SRCDIR)rvms.c -o $(OUTDIR)MicroservicesApp_resized $(LIBS)
+
+improved:
 	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)msq_limited_cap.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_limited_cap $(LIBS)
-priority:
-	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)msq_priority.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_priority $(LIBS)
-size:
-	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)msq_size.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_size $(LIBS)
-sjf:
-	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)msq_sjf.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c -o $(OUTDIR)msq_sjf $(LIBS)
-project:
-	mkdir -p $(OUTDIR)
-	$(CC) $(SRCDIR)MetalPartsProduction.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c $(SRCDIR)rvms.c -o $(OUTDIR)MetalPartsProduction $(LIBS)
+	$(CC) $(SRCDIR)MicroservicesApp_improved.c $(SRCDIR)rngs.c $(SRCDIR)rvgs.c $(SRCDIR)rvms.c -o $(OUTDIR)MicroservicesApp_improved $(LIBS)
 
 clean:
 	rm -f -r $(OUTDIR)

@@ -1,3 +1,9 @@
+/*
+  QoS achived
+  1) ploss on payment_control node <  5 %  (=  0.00 %)
+  2) max average response time     < 12 s  (= 11.36 s)
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -7,19 +13,19 @@
 
 #define START             0.0         // initial (open the door) time
 #define STOP              86400.0     // terminal (close the door) time
-#define REPLICAS_NUM      100
+#define REPLICAS_NUM      400
 #define NODES             4           // number of nodes in the system
 #define INFINITE_CAPACITY 999999      // large number to simulate infinite queue
-#define LOC 0.99                      // level of confidence, use 0.95 for 95% confidence
+#define LOC 0.99                      // level of confidence, use 0.99 for 99% confidence
 
 int seed = 13;
 unsigned long external_arrivals;
 unsigned long max_processable_jobs = 1 << 25;
 
 double lambda[NODES] = {1.9, 0.8, 0.0, 0.0};
-double mu[NODES] = {0.5, 0.3, 0.4, 0.77};
-int servers_num[NODES] = {4, 4, 2, 2};
-unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY, 8};
+double mu[NODES] = {1.0/2, 1.0/3.2, 1.0/2.5, 1.0/1.3};
+int servers_num[NODES] = {5, 6, 3, 5};
+unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY};
 double p[3] = {0.65, 0.2, 0.4};
 
 typedef enum {
@@ -124,6 +130,7 @@ void init_event_list(event**);
 void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
 void init_areas(time_integrated**);
+void extract_statistic_analysis(analysis[REPLICAS_NUM][NODES], statistic_analysis*, double);
 void print_result(analysis[NODES]);
 void print_statistic_result(statistic_analysis[NODES]);
 void loading_bar(double);
@@ -139,6 +146,8 @@ int main(void)
   double current_time = START, next_time;
   analysis result[REPLICAS_NUM][NODES];
   statistic_analysis statistic_result[NODES];
+  double max_wait[REPLICAS_NUM];
+  double avg_max_wait = 0;
 
   PlantSeeds(seed);
   
@@ -235,6 +244,7 @@ int main(void)
       }
     }
 
+    max_wait[rep] = 0;
     for(int i=0; i<NODES; i++){
       result[rep][i].jobs = nodes[i].processed_jobs;
       result[rep][i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
@@ -244,6 +254,7 @@ int main(void)
       result[rep][i].Ns = areas[i].node_area / current_time;
       result[rep][i].Nq = areas[i].queue_area / current_time;
       result[rep][i].utilization = (total_service[i] / servers_num[i]) / current_time;
+      max_wait[rep] += result[rep][i].wait;
       if(nodes[i].rejected_jobs == 0 && nodes[i].processed_jobs == 0){
         result[rep][i].ploss = 0;
       }
@@ -254,116 +265,46 @@ int main(void)
       result[rep][i].server_utilization = calloc(servers_num[i], sizeof(double));
       result[rep][i].server_service = calloc(servers_num[i], sizeof(double));
       result[rep][i].server_share = calloc(servers_num[i], sizeof(double));
+      if(result[rep][i].server_utilization == NULL || result[rep][i].server_service == NULL || result[rep][i].server_share == NULL){
+        printf("Error allocating memory: analysis server statistics\n");
+        exit(4);
+      }
       for(int s=0; s<servers_num[i]; s++){
         result[rep][i].server_utilization[s] = nodes[i].servers[s].service_time / current_time;
         result[rep][i].server_service[s] = nodes[i].servers[s].service_time / nodes[i].servers[s].served_jobs;
         result[rep][i].server_share[s] = (double) nodes[i].servers[s].served_jobs * 100 / nodes[i].processed_jobs;
       }
     }
+
+    for(int rep=0; rep<REPLICAS_NUM; rep++){
+      avg_max_wait += max_wait[rep];
+    }
+    avg_max_wait = avg_max_wait / REPLICAS_NUM;
+    
     free(areas);
     free(nodes);
 
     loading_bar((double)(rep+1)/REPLICAS_NUM);
   }
-  //printf("To clear queued jobs, the system ran for %.2lf seconds after close\n", current_time - STOP);
-
-  double u = 1.0 - 0.5 * (1.0 - LOC);                     // interval parameter
-  double t = idfStudent(REPLICAS_NUM - 1, u);             // critical value of t
-  struct {
-    double interarrival;
-    double wait;
-    double delay;
-    double service;
-    double Ns;
-    double Nq;
-    double utilization;
-    double ploss;
-  } sum;
-  double diff;
-
-  for(int i=0; i<NODES; i++){ // use Welford's one-pass method and standard deviation  
-    statistic_result[i].interarrival[mean] = 0;
-    sum.interarrival = 0;
-    statistic_result[i].wait[mean] = 0;
-    sum.wait = 0;
-    statistic_result[i].delay[mean] = 0;
-    sum.delay = 0;
-    statistic_result[i].service[mean] = 0;
-    sum.service = 0;
-    statistic_result[i].Ns[mean] = 0;
-    sum.Ns = 0;
-    statistic_result[i].Nq[mean] = 0;
-    sum.Nq = 0;
-    statistic_result[i].utilization[mean] = 0;
-    sum.utilization = 0;
-    statistic_result[i].ploss[mean] = 0;
-    sum.ploss = 0;
-
-    for(int n=1; n<=REPLICAS_NUM; n++){
-      diff = result[n-1][i].interarrival - statistic_result[i].interarrival[mean];
-      sum.interarrival += diff * diff * (n - 1.0) / n;
-      statistic_result[i].interarrival[mean] += diff / n;
-
-      diff = result[n-1][i].wait - statistic_result[i].wait[mean];
-      sum.wait += diff * diff * (n - 1.0) / n;
-      statistic_result[i].wait[mean] += diff / n;
-      
-      diff = result[n-1][i].delay - statistic_result[i].delay[mean];
-      sum.delay += diff * diff * (n - 1.0) / n;
-      statistic_result[i].delay[mean] += diff / n;
-
-      diff = result[n-1][i].service - statistic_result[i].service[mean];
-      sum.service += diff * diff * (n - 1.0) / n;
-      statistic_result[i].service[mean] += diff / n;
-
-      diff = result[n-1][i].Ns - statistic_result[i].Ns[mean];
-      sum.Ns += diff * diff * (n - 1.0) / n;
-      statistic_result[i].Ns[mean] += diff / n;
-
-      diff = result[n-1][i].Nq - statistic_result[i].Nq[mean];
-      sum.Nq += diff * diff * (n - 1.0) / n;
-      statistic_result[i].Nq[mean] += diff / n;
-
-      diff = result[n-1][i].utilization - statistic_result[i].utilization[mean];
-      sum.utilization += diff * diff * (n - 1.0) / n;
-      statistic_result[i].utilization[mean] += diff / n;
-
-      diff = result[n-1][i].ploss - statistic_result[i].ploss[mean];
-      sum.ploss += diff * diff * (n - 1.0) / n;
-      statistic_result[i].ploss[mean] += diff / n;
-    }
-
-    if(REPLICAS_NUM > 1){
-      statistic_result[i].interarrival[interval] = t * sqrt(sum.interarrival / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].wait[interval] = t * sqrt(sum.wait / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].delay[interval] = t * sqrt(sum.delay / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].service[interval] = t * sqrt(sum.service / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].Ns[interval] = t * sqrt(sum.Ns / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].Nq[interval] = t * sqrt(sum.Nq / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].utilization[interval] = t * sqrt(sum.utilization / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].ploss[interval] = t * sqrt(sum.ploss / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-    }
-    else{
-      printf("ERROR - insufficient data\n");
-    }
-  }
 
   //print_result(result[0]);
+  extract_statistic_analysis(result, statistic_result, LOC);
   print_statistic_result(statistic_result);
+  printf("Average max response time = %.3lf s\n", avg_max_wait);
 
   return (0);
 }
 
 double GetInterArrival(node_id k)
 {
-  SelectStream(k);
+  SelectStream(10*k);
 
   return Exponential(1.0/lambda[k]);
 }
    
 double GetService(node_id k)
 {                 
-  SelectStream(NODES + k);
+  SelectStream(10*(NODES+k));
 
   return Exponential(1.0/(mu[k]));    
 }
@@ -373,7 +314,7 @@ node_id SwitchNode(double *prob, node_id start_node)
   node_id destination_node;
   double rand;
 
-  SelectStream(NODES * 2 + start_node);
+  SelectStream(192);
   rand = Random();
 
   switch(start_node){
@@ -584,6 +525,91 @@ void init_areas(time_integrated **areas){
   }
 }
 
+void extract_statistic_analysis(analysis result[REPLICAS_NUM][NODES], statistic_analysis *statistic_result, double loc){
+  double u = 1.0 - 0.5 * (1.0 - loc);                     // interval parameter
+  double t = idfStudent(REPLICAS_NUM - 1, u);             // critical value of t
+  double diff;
+  struct {
+    double interarrival;
+    double wait;
+    double delay;
+    double service;
+    double Ns;
+    double Nq;
+    double utilization;
+    double ploss;
+    double max_wait;
+  } sum;
+
+
+  for(int i=0; i<NODES; i++){ // use Welford's one-pass method and standard deviation  
+    statistic_result[i].interarrival[mean] = 0;
+    sum.interarrival = 0;
+    statistic_result[i].wait[mean] = 0;
+    sum.wait = 0;
+    statistic_result[i].delay[mean] = 0;
+    sum.delay = 0;
+    statistic_result[i].service[mean] = 0;
+    sum.service = 0;
+    statistic_result[i].Ns[mean] = 0;
+    sum.Ns = 0;
+    statistic_result[i].Nq[mean] = 0;
+    sum.Nq = 0;
+    statistic_result[i].utilization[mean] = 0;
+    sum.utilization = 0;
+    statistic_result[i].ploss[mean] = 0;
+    sum.ploss = 0;
+
+    for(int n=1; n<=REPLICAS_NUM; n++){
+      diff = result[n-1][i].interarrival - statistic_result[i].interarrival[mean];
+      sum.interarrival += diff * diff * (n - 1.0) / n;
+      statistic_result[i].interarrival[mean] += diff / n;
+
+      diff = result[n-1][i].wait - statistic_result[i].wait[mean];
+      sum.wait += diff * diff * (n - 1.0) / n;
+      statistic_result[i].wait[mean] += diff / n;
+      
+      diff = result[n-1][i].delay - statistic_result[i].delay[mean];
+      sum.delay += diff * diff * (n - 1.0) / n;
+      statistic_result[i].delay[mean] += diff / n;
+
+      diff = result[n-1][i].service - statistic_result[i].service[mean];
+      sum.service += diff * diff * (n - 1.0) / n;
+      statistic_result[i].service[mean] += diff / n;
+
+      diff = result[n-1][i].Ns - statistic_result[i].Ns[mean];
+      sum.Ns += diff * diff * (n - 1.0) / n;
+      statistic_result[i].Ns[mean] += diff / n;
+
+      diff = result[n-1][i].Nq - statistic_result[i].Nq[mean];
+      sum.Nq += diff * diff * (n - 1.0) / n;
+      statistic_result[i].Nq[mean] += diff / n;
+
+      diff = result[n-1][i].utilization - statistic_result[i].utilization[mean];
+      sum.utilization += diff * diff * (n - 1.0) / n;
+      statistic_result[i].utilization[mean] += diff / n;
+
+      diff = result[n-1][i].ploss - statistic_result[i].ploss[mean];
+      sum.ploss += diff * diff * (n - 1.0) / n;
+      statistic_result[i].ploss[mean] += diff / n;
+    }
+
+    if(REPLICAS_NUM > 1){
+      statistic_result[i].interarrival[interval] = t * sqrt(sum.interarrival / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result[i].wait[interval] = t * sqrt(sum.wait / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result[i].delay[interval] = t * sqrt(sum.delay / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result[i].service[interval] = t * sqrt(sum.service / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result[i].Ns[interval] = t * sqrt(sum.Ns / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result[i].Nq[interval] = t * sqrt(sum.Nq / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result[i].utilization[interval] = t * sqrt(sum.utilization / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result[i].ploss[interval] = t * sqrt(sum.ploss / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+    }
+    else{
+      printf("ERROR - insufficient data\n");
+    }
+  }
+}
+
 void print_result(analysis result[NODES]){
   printf("\n");
   for(int k=0; k<NODES; k++){
@@ -608,20 +634,19 @@ void print_result(analysis result[NODES]){
 }
 
 void print_statistic_result(statistic_analysis result[NODES]){
-  printf("\nbased upon %ld simulations and with %.2lf%% confidence:\n", REPLICAS_NUM, 100.0 * LOC);
+  printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
   for(int k=0; k<NODES; k++){
     printf("Node %d:\n", k+1);
-    printf("    avg interarrival     = %lf +/- %lf\n", result[k].interarrival[mean], result[k].interarrival[interval]);
-    printf("    avg wait             = %lf +/- %lf\n", result[k].wait[mean], result[k].wait[interval]);
-    printf("    avg delay            = %lf +/- %lf\n", result[k].delay[mean], result[k].delay[interval]);
-    printf("    avg service          = %lf +/- %lf\n", result[k].service[mean], result[k].service[interval]);
-    printf("    avg # in node        = %lf +/- %lf\n", result[k].Ns[mean], result[k].Ns[interval]);
-    printf("    avg # in queue       = %lf +/- %lf\n", result[k].Nq[mean], result[k].Nq[interval]);
-    printf("    avg utilizzation     = %lf +/- %lf\n", result[k].utilization[mean], result[k].utilization[interval]);
-    printf("    ploss                = %.3lf%% +/- %.3lf%%\n", 100 * result[k].ploss[mean], 100 * result[k].ploss[interval]);
+    printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", result[k].interarrival[mean], result[k].interarrival[interval]);
+    printf("    avg wait             = %10.6lf +/- %9.6lf\n", result[k].wait[mean], result[k].wait[interval]);
+    printf("    avg delay            = %10.6lf +/- %9.6lf\n", result[k].delay[mean], result[k].delay[interval]);
+    printf("    avg service          = %10.6lf +/- %9.6lf\n", result[k].service[mean], result[k].service[interval]);
+    printf("    avg # in node        = %10.6lf +/- %9.6lf\n", result[k].Ns[mean], result[k].Ns[interval]);
+    printf("    avg # in queue       = %10.6lf +/- %9.6lf\n", result[k].Nq[mean], result[k].Nq[interval]);
+    printf("    avg utilizzation     = %10.6lf +/- %9.6lf\n", result[k].utilization[mean], result[k].utilization[interval]);
+    printf("    ploss                = %8.4lf %% +/- %7.4lf %%\n", 100 * result[k].ploss[mean], 100 * result[k].ploss[interval]);
     printf("\n");
   }
-  printf("\n");
 }
 
 void loading_bar(double progress){
@@ -631,7 +656,7 @@ void loading_bar(double progress){
     printf("\r\33[2K\033[A\33[2K");
   }
   else{
-    printf("\rProgress: %3d%% [", percentage);
+    printf("\rProgress: %2d%% [", percentage);
     while(i<percentage){
       printf("#");
       i++;
