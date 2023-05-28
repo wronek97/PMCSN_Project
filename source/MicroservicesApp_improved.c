@@ -130,7 +130,7 @@ void init_event_list(event**);
 void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
 void init_areas(time_integrated**);
-void extract_statistic_analysis(analysis[REPLICAS_NUM][NODES], statistic_analysis*, double);
+void extract_statistic_analysis(analysis[REPLICAS_NUM][NODES], statistic_analysis*);
 void print_result(analysis[NODES]);
 void print_statistic_result(statistic_analysis[NODES]);
 void loading_bar(double);
@@ -233,14 +233,11 @@ int main(void)
 
     // extract analysis data from simulation
     double total_service[NODES];
-    long total_served[NODES];
 
     for(int k=0; k<NODES; k++){
       total_service[k] = 0;
-      total_served[k] = 0;
       for(int s=0; s<servers_num[k]; s++){
         total_service[k] += nodes[k].servers[s].service_time;
-        total_served[k] += nodes[k].servers[s].served_jobs;
       }
     }
 
@@ -250,7 +247,7 @@ int main(void)
       result[rep][i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
       result[rep][i].wait = areas[i].node_area / nodes[i].processed_jobs;
       result[rep][i].delay = areas[i].queue_area / nodes[i].processed_jobs;
-      result[rep][i].service = total_service[i] / total_served[i];
+      result[rep][i].service = total_service[i] / nodes[i].processed_jobs;
       result[rep][i].Ns = areas[i].node_area / current_time;
       result[rep][i].Nq = areas[i].queue_area / current_time;
       result[rep][i].utilization = (total_service[i] / servers_num[i]) / current_time;
@@ -288,7 +285,7 @@ int main(void)
   }
 
   //print_result(result[0]);
-  extract_statistic_analysis(result, statistic_result, LOC);
+  extract_statistic_analysis(result, statistic_result);
   print_statistic_result(statistic_result);
   printf("Average max response time = %.3lf s\n", avg_max_wait);
 
@@ -525,8 +522,8 @@ void init_areas(time_integrated **areas){
   }
 }
 
-void extract_statistic_analysis(analysis result[REPLICAS_NUM][NODES], statistic_analysis *statistic_result, double loc){
-  double u = 1.0 - 0.5 * (1.0 - loc);                     // interval parameter
+void extract_statistic_analysis(analysis result[REPLICAS_NUM][NODES], statistic_analysis *statistic_result){
+  double u = 1.0 - 0.5 * (1.0 - LOC);                     // interval parameter
   double t = idfStudent(REPLICAS_NUM - 1, u);             // critical value of t
   double diff;
   struct {
