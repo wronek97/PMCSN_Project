@@ -11,16 +11,17 @@
 #include "rvgs.h"
 #include "rvms.h"
 
-#define START             0.0         // initial (open the door) time
-#define STOP              86400.0     // terminal (close the door) time
-#define REPLICAS_NUM      400
-#define NODES             4           // number of nodes in the system
-#define INFINITE_CAPACITY 999999      // large number to simulate infinite queue
-#define LOC 0.99                      // level of confidence, use 0.99 for 99% confidence
+#define START                       0.0         // initial (open the door) time
+#define STOP                        86400.0     // terminal (close the door) time
+#define REPLICAS_NUM                400
+#define NODES                       4           // number of nodes in the system
+#define INFINITE_CAPACITY           1 << 25     // large number to simulate infinite queue
+#define INFINITE_PROCESSABLE_JOBS   1 << 25     // large number to simulate infinite
+#define LOC                         0.99        // level of confidence, use 0.99 for 99% confidence
 
 int seed = 13;
 unsigned long external_arrivals;
-unsigned long max_processable_jobs = 1 << 25;
+unsigned long max_processable_jobs = INFINITE_PROCESSABLE_JOBS;
 
 double lambda[NODES] = {1.9, 0.8, 0.0, 0.0};
 double mu[NODES] = {1.0/2, 1.0/3.2, 1.0/2.5, 1.0/1.3};
@@ -85,9 +86,9 @@ typedef struct {
   long rejected_jobs;     // jobs rejected by the limited queue
   long processed_jobs;    // jobs processed by the node
   double last_arrival;    // last arrival time of a job in the node
-  job *queue;             // 
-  server_stats *servers;  // 
-  int total_servers;
+  job *queue;             // list of jobs in the queue of the node
+  int total_servers;      // number of servers in the node
+  server_stats *servers;  // server status and stats
 } node_stats;
 
 typedef struct {
@@ -106,14 +107,15 @@ typedef struct {
 } analysis;
 
 typedef struct { // [0] = mean, [1] = confidence interval
-  double interarrival[2];
-  double wait[2];
-  double delay[2];
-  double service[2];
-  double Ns[2];
-  double Nq[2];
-  double utilization[2];
-  double ploss[2];
+  double interarrival[NODES][2];
+  double wait[NODES][2];
+  double delay[NODES][2];
+  double service[NODES][2];
+  double Ns[NODES][2];
+  double Nq[NODES][2];
+  double utilization[NODES][2];
+  double ploss[NODES][2];
+  double avg_max_wait[2];
 } statistic_analysis;
 
 double GetInterArrival(node_id);
@@ -130,9 +132,11 @@ void init_event_list(event**);
 void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
 void init_areas(time_integrated**);
-void extract_statistic_analysis(analysis[REPLICAS_NUM][NODES], statistic_analysis*);
-void print_result(analysis[NODES]);
-void print_statistic_result(statistic_analysis[NODES]);
+void init_result(analysis***);
+void extract_analysis(analysis*, node_stats*, time_integrated*, double);
+void extract_statistic_analysis(analysis**, statistic_analysis*);
+void print_replica(analysis*);
+void print_statistic_result(statistic_analysis*);
 void loading_bar(double);
 
 int main(void)
@@ -144,10 +148,10 @@ int main(void)
   node_id actual_node;
   int actual_server;
   double current_time = START, next_time;
-  analysis result[REPLICAS_NUM][NODES];
-  statistic_analysis statistic_result[NODES];
-  double max_wait[REPLICAS_NUM];
-  double avg_max_wait = 0;
+  analysis **result;
+  statistic_analysis statistic_result;
+
+  init_result(&result);
 
   PlantSeeds(seed);
   
@@ -165,7 +169,7 @@ int main(void)
       actual_server = ev->server;
       next_time = ev->time;
 
-      for(int node=0; node<NODES; node++){
+      for(int node=0; node<NODES; node++){ // update integrals
         areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
         areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
       }
@@ -223,85 +227,40 @@ int main(void)
           nodes[actual_node].servers[actual_server].status = idle;
         }
         
-        node_id switch_node = SwitchNode(p, actual_node);
-        new_arr = GenerateEvent(job_arrival, switch_node, actual_server, current_time);
+        new_arr = GenerateEvent(job_arrival, SwitchNode(p, actual_node), actual_server, current_time);
         InsertEvent(&event_list, new_arr);
       }
 
       free(ev);
     }
 
-    // extract analysis data from simulation
-    double total_service[NODES];
-
-    for(int k=0; k<NODES; k++){
-      total_service[k] = 0;
-      for(int s=0; s<servers_num[k]; s++){
-        total_service[k] += nodes[k].servers[s].service_time;
-      }
-    }
-
-    max_wait[rep] = 0;
-    for(int i=0; i<NODES; i++){
-      result[rep][i].jobs = nodes[i].processed_jobs;
-      result[rep][i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
-      result[rep][i].wait = areas[i].node_area / nodes[i].processed_jobs;
-      result[rep][i].delay = areas[i].queue_area / nodes[i].processed_jobs;
-      result[rep][i].service = total_service[i] / nodes[i].processed_jobs;
-      result[rep][i].Ns = areas[i].node_area / current_time;
-      result[rep][i].Nq = areas[i].queue_area / current_time;
-      result[rep][i].utilization = (total_service[i] / servers_num[i]) / current_time;
-      max_wait[rep] += result[rep][i].wait;
-      if(nodes[i].rejected_jobs == 0 && nodes[i].processed_jobs == 0){
-        result[rep][i].ploss = 0;
-      }
-      else{
-        result[rep][i].ploss = (double) nodes[i].rejected_jobs / (nodes[i].rejected_jobs + nodes[i].processed_jobs);
-      }
-
-      result[rep][i].server_utilization = calloc(servers_num[i], sizeof(double));
-      result[rep][i].server_service = calloc(servers_num[i], sizeof(double));
-      result[rep][i].server_share = calloc(servers_num[i], sizeof(double));
-      if(result[rep][i].server_utilization == NULL || result[rep][i].server_service == NULL || result[rep][i].server_share == NULL){
-        printf("Error allocating memory: analysis server statistics\n");
-        exit(4);
-      }
-      for(int s=0; s<servers_num[i]; s++){
-        result[rep][i].server_utilization[s] = nodes[i].servers[s].service_time / current_time;
-        result[rep][i].server_service[s] = nodes[i].servers[s].service_time / nodes[i].servers[s].served_jobs;
-        result[rep][i].server_share[s] = (double) nodes[i].servers[s].served_jobs * 100 / nodes[i].processed_jobs;
-      }
-    }
-
-    for(int rep=0; rep<REPLICAS_NUM; rep++){
-      avg_max_wait += max_wait[rep];
-    }
-    avg_max_wait = avg_max_wait / REPLICAS_NUM;
+    // extract analysis data from the replica
+    extract_analysis(result[rep], nodes, areas, current_time);
     
+    // free memory
     free(areas);
     free(nodes);
 
-    loading_bar((double)(rep+1)/REPLICAS_NUM);
+    loading_bar((double)(rep+1)/REPLICAS_NUM); // update loading bar
   }
 
-  //print_result(result[0]);
-  extract_statistic_analysis(result, statistic_result);
-  print_statistic_result(statistic_result);
-  printf("Average max response time = %.3lf s\n", avg_max_wait);
+  //print_replica(result[119]);
+  extract_statistic_analysis(result, &statistic_result);
+  print_statistic_result(&statistic_result);
 
-  return (0);
+  return 0;
 }
 
 double GetInterArrival(node_id k)
 {
-  SelectStream(10*k);
+  SelectStream(20*k);
 
   return Exponential(1.0/lambda[k]);
 }
    
 double GetService(node_id k)
 {                 
-  SelectStream(10*(NODES+k));
+  SelectStream(20*(NODES+k));
 
   return Exponential(1.0/(mu[k]));    
 }
@@ -506,7 +465,7 @@ void init_nodes(node_stats **nodes){
   *nodes = calloc(NODES, sizeof(node_stats));
   if(*nodes == NULL){
     printf("Error allocating memory for: nodes_stats\n");
-    exit(1);
+    exit(2);
   }
   for(int i=0; i<NODES; i++){
     (*nodes)[i].total_servers = servers_num[i];
@@ -518,13 +477,79 @@ void init_areas(time_integrated **areas){
   *areas = calloc(NODES, sizeof(time_integrated));
   if(*areas == NULL){
     printf("Error allocating memory for: time_integrated\n");
-    exit(1);
+    exit(3);
   }
 }
 
-void extract_statistic_analysis(analysis result[REPLICAS_NUM][NODES], statistic_analysis *statistic_result){
-  double u = 1.0 - 0.5 * (1.0 - LOC);                     // interval parameter
-  double t = idfStudent(REPLICAS_NUM - 1, u);             // critical value of t
+void init_result(analysis ***result){
+  *result = calloc(REPLICAS_NUM, sizeof(analysis*));
+  if(*result == NULL){
+    printf("Error allocating memory for: analysis\n");
+    exit(4);
+  }
+  for(int rep=0; rep<REPLICAS_NUM; rep++){
+    (*result)[rep] = calloc(NODES, sizeof(analysis));
+    if(*result == NULL){
+      printf("Error allocating memory for: analysis\n");
+      exit(4);
+    }
+    for(int i=0; i<NODES; i++){
+      (*result)[rep][i].server_utilization = calloc(servers_num[i], sizeof(double));
+      (*result)[rep][i].server_service = calloc(servers_num[i], sizeof(double));
+      (*result)[rep][i].server_share = calloc(servers_num[i], sizeof(double));
+      if((*result)[rep][i].server_utilization == NULL || (*result)[rep][i].server_service == NULL || (*result)[rep][i].server_share == NULL){
+        printf("Error allocating memory: analysis server statistics\n");
+        exit(4);
+      }
+    }
+  }
+}
+
+void extract_analysis(analysis *result, node_stats *nodes, time_integrated *areas, double oper_period){
+  double total_service[NODES];
+
+  for(int k=0; k<NODES; k++){
+    total_service[k] = 0;
+    for(int s=0; s<servers_num[k]; s++){
+      total_service[k] += nodes[k].servers[s].service_time;
+    }
+  }
+
+  for(int i=0; i<NODES; i++){
+    result[i].jobs = nodes[i].processed_jobs;
+
+    result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+
+    result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
+
+    result[i].delay = areas[i].queue_area / nodes[i].processed_jobs;
+
+    result[i].service = total_service[i] / nodes[i].processed_jobs;
+
+    result[i].Ns = areas[i].node_area / oper_period;
+
+    result[i].Nq = areas[i].queue_area / oper_period;
+
+    result[i].utilization = (total_service[i] / servers_num[i]) / oper_period;
+
+    if(nodes[i].rejected_jobs == 0 && nodes[i].processed_jobs == 0){
+      result[i].ploss = 0;
+    }
+    else{
+      result[i].ploss = (double) nodes[i].rejected_jobs / (nodes[i].rejected_jobs + nodes[i].processed_jobs);
+    }
+
+    for(int s=0; s<servers_num[i]; s++){
+      result[i].server_utilization[s] = nodes[i].servers[s].service_time / oper_period;
+      result[i].server_service[s] = nodes[i].servers[s].service_time / nodes[i].servers[s].served_jobs;
+      result[i].server_share[s] = (double) nodes[i].servers[s].served_jobs * 100 / nodes[i].processed_jobs;
+    }
+  }
+}
+
+void extract_statistic_analysis(analysis **result, statistic_analysis *statistic_result){
+  double u = 1.0 - (1.0 - LOC)/2;                     // interval parameter
+  double t = idfStudent(REPLICAS_NUM - 1, u);         // critical value of t
   double diff;
   struct {
     double interarrival;
@@ -537,77 +562,103 @@ void extract_statistic_analysis(analysis result[REPLICAS_NUM][NODES], statistic_
     double ploss;
     double max_wait;
   } sum;
-
+  double *max_wait = calloc(REPLICAS_NUM, sizeof(double));
+  
+  if(max_wait == NULL){
+    printf("Error allocating memory: max_wait calloc\n");
+    exit(5);
+  }
 
   for(int i=0; i<NODES; i++){ // use Welford's one-pass method and standard deviation  
-    statistic_result[i].interarrival[mean] = 0;
+    statistic_result->interarrival[i][mean] = 0;
     sum.interarrival = 0;
-    statistic_result[i].wait[mean] = 0;
+    statistic_result->wait[i][mean] = 0;
     sum.wait = 0;
-    statistic_result[i].delay[mean] = 0;
+    statistic_result->delay[i][mean] = 0;
     sum.delay = 0;
-    statistic_result[i].service[mean] = 0;
+    statistic_result->service[i][mean] = 0;
     sum.service = 0;
-    statistic_result[i].Ns[mean] = 0;
+    statistic_result->Ns[i][mean] = 0;
     sum.Ns = 0;
-    statistic_result[i].Nq[mean] = 0;
+    statistic_result->Nq[i][mean] = 0;
     sum.Nq = 0;
-    statistic_result[i].utilization[mean] = 0;
+    statistic_result->utilization[i][mean] = 0;
     sum.utilization = 0;
-    statistic_result[i].ploss[mean] = 0;
+    statistic_result->ploss[i][mean] = 0;
     sum.ploss = 0;
 
     for(int n=1; n<=REPLICAS_NUM; n++){
-      diff = result[n-1][i].interarrival - statistic_result[i].interarrival[mean];
+      diff = result[n-1][i].interarrival - statistic_result->interarrival[i][mean];
       sum.interarrival += diff * diff * (n - 1.0) / n;
-      statistic_result[i].interarrival[mean] += diff / n;
+      statistic_result->interarrival[i][mean] += diff / n;
 
-      diff = result[n-1][i].wait - statistic_result[i].wait[mean];
+      diff = result[n-1][i].wait - statistic_result->wait[i][mean];
       sum.wait += diff * diff * (n - 1.0) / n;
-      statistic_result[i].wait[mean] += diff / n;
+      statistic_result->wait[i][mean] += diff / n;
       
-      diff = result[n-1][i].delay - statistic_result[i].delay[mean];
+      diff = result[n-1][i].delay - statistic_result->delay[i][mean];
       sum.delay += diff * diff * (n - 1.0) / n;
-      statistic_result[i].delay[mean] += diff / n;
+      statistic_result->delay[i][mean] += diff / n;
 
-      diff = result[n-1][i].service - statistic_result[i].service[mean];
+      diff = result[n-1][i].service - statistic_result->service[i][mean];
       sum.service += diff * diff * (n - 1.0) / n;
-      statistic_result[i].service[mean] += diff / n;
+      statistic_result->service[i][mean] += diff / n;
 
-      diff = result[n-1][i].Ns - statistic_result[i].Ns[mean];
+      diff = result[n-1][i].Ns - statistic_result->Ns[i][mean];
       sum.Ns += diff * diff * (n - 1.0) / n;
-      statistic_result[i].Ns[mean] += diff / n;
+      statistic_result->Ns[i][mean] += diff / n;
 
-      diff = result[n-1][i].Nq - statistic_result[i].Nq[mean];
+      diff = result[n-1][i].Nq - statistic_result->Nq[i][mean];
       sum.Nq += diff * diff * (n - 1.0) / n;
-      statistic_result[i].Nq[mean] += diff / n;
+      statistic_result->Nq[i][mean] += diff / n;
 
-      diff = result[n-1][i].utilization - statistic_result[i].utilization[mean];
+      diff = result[n-1][i].utilization - statistic_result->utilization[i][mean];
       sum.utilization += diff * diff * (n - 1.0) / n;
-      statistic_result[i].utilization[mean] += diff / n;
+      statistic_result->utilization[i][mean] += diff / n;
 
-      diff = result[n-1][i].ploss - statistic_result[i].ploss[mean];
+      diff = result[n-1][i].ploss - statistic_result->ploss[i][mean];
       sum.ploss += diff * diff * (n - 1.0) / n;
-      statistic_result[i].ploss[mean] += diff / n;
+      statistic_result->ploss[i][mean] += diff / n;
     }
 
     if(REPLICAS_NUM > 1){
-      statistic_result[i].interarrival[interval] = t * sqrt(sum.interarrival / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].wait[interval] = t * sqrt(sum.wait / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].delay[interval] = t * sqrt(sum.delay / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].service[interval] = t * sqrt(sum.service / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].Ns[interval] = t * sqrt(sum.Ns / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].Nq[interval] = t * sqrt(sum.Nq / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].utilization[interval] = t * sqrt(sum.utilization / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result[i].ploss[interval] = t * sqrt(sum.ploss / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result->interarrival[i][interval] = t * sqrt(sum.interarrival / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result->wait[i][interval] = t * sqrt(sum.wait / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result->delay[i][interval] = t * sqrt(sum.delay / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result->service[i][interval] = t * sqrt(sum.service / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result->Ns[i][interval] = t * sqrt(sum.Ns / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result->Nq[i][interval] = t * sqrt(sum.Nq / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result->utilization[i][interval] = t * sqrt(sum.utilization / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+      statistic_result->ploss[i][interval] = t * sqrt(sum.ploss / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
     }
     else{
       printf("ERROR - insufficient data\n");
+      exit(5);
     }
+  }
+
+  statistic_result->avg_max_wait[mean] = 0;
+  sum.max_wait = 0;
+  for(int n=1; n<=REPLICAS_NUM; n++){
+    max_wait[n-1] = 0;
+    for(int i=0; i<NODES; i++){
+      max_wait[n-1] += result[n-1][i].wait;
+    }
+
+    diff = max_wait[n-1] - statistic_result->avg_max_wait[mean];
+    sum.max_wait += diff * diff * (n - 1.0) / n;
+    statistic_result->avg_max_wait[mean] += diff / n;
+  }
+  if(REPLICAS_NUM > 1){
+      statistic_result->avg_max_wait[interval] = t * sqrt(sum.max_wait / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+  }
+  else{
+    printf("ERROR - insufficient data\n");
+    exit(5);
   }
 }
 
-void print_result(analysis result[NODES]){
+void print_replica(analysis *result){
   printf("\n");
   for(int k=0; k<NODES; k++){
     printf("Node %d:\n", k+1);
@@ -630,20 +681,21 @@ void print_result(analysis result[NODES]){
   printf("\n");
 }
 
-void print_statistic_result(statistic_analysis result[NODES]){
+void print_statistic_result(statistic_analysis *result){
   printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
   for(int k=0; k<NODES; k++){
     printf("Node %d:\n", k+1);
-    printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", result[k].interarrival[mean], result[k].interarrival[interval]);
-    printf("    avg wait             = %10.6lf +/- %9.6lf\n", result[k].wait[mean], result[k].wait[interval]);
-    printf("    avg delay            = %10.6lf +/- %9.6lf\n", result[k].delay[mean], result[k].delay[interval]);
-    printf("    avg service          = %10.6lf +/- %9.6lf\n", result[k].service[mean], result[k].service[interval]);
-    printf("    avg # in node        = %10.6lf +/- %9.6lf\n", result[k].Ns[mean], result[k].Ns[interval]);
-    printf("    avg # in queue       = %10.6lf +/- %9.6lf\n", result[k].Nq[mean], result[k].Nq[interval]);
-    printf("    avg utilizzation     = %10.6lf +/- %9.6lf\n", result[k].utilization[mean], result[k].utilization[interval]);
-    printf("    ploss                = %8.4lf %% +/- %7.4lf %%\n", 100 * result[k].ploss[mean], 100 * result[k].ploss[interval]);
+    printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", result->interarrival[k][mean], result->interarrival[k][interval]);
+    printf("    avg wait             = %10.6lf +/- %9.6lf\n", result->wait[k][mean], result->wait[k][interval]);
+    printf("    avg delay            = %10.6lf +/- %9.6lf\n", result->delay[k][mean], result->delay[k][interval]);
+    printf("    avg service          = %10.6lf +/- %9.6lf\n", result->service[k][mean], result->service[k][interval]);
+    printf("    avg # in node        = %10.6lf +/- %9.6lf\n", result->Ns[k][mean], result->Ns[k][interval]);
+    printf("    avg # in queue       = %10.6lf +/- %9.6lf\n", result->Nq[k][mean], result->Nq[k][interval]);
+    printf("    avg utilizzation     = %10.6lf +/- %9.6lf\n", result->utilization[k][mean], result->utilization[k][interval]);
+    printf("    ploss                = %8.4lf %% +/- %7.4lf %%\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
     printf("\n");
   }
+  printf("Average max response time = %7.3lf s +/- %6.3f s\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
 }
 
 void loading_bar(double progress){
@@ -659,7 +711,7 @@ void loading_bar(double progress){
       i++;
     }
     while(i<100){
-      printf(" ");
+      printf("_");
       i++;
     }
     printf("]");
