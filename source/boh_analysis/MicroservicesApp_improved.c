@@ -1,7 +1,7 @@
 /*
-  problems to solve:
-  1) ploss too high                     (= 43.14 %)
-  2) max average response time too high (= 56.23 s)
+  QoS achived
+  1) ploss on payment_control node <  5 %  (=  0.00 %)
+  2) max average response time     < 12 s  (= 11.36 s)
 */
 
 #include <stdio.h>
@@ -13,20 +13,21 @@
 
 #define START                       0.0         // initial (open the door) time
 #define STOP                        86400.0     // terminal (close the door) time
-#define REPLICAS_NUM                400
+#define REPLICAS_NUM                1000
 #define NODES                       4           // number of nodes in the system
 #define INFINITE_CAPACITY           1 << 25     // large number to simulate infinite queue
 #define INFINITE_PROCESSABLE_JOBS   1 << 25     // large number to simulate infinite
 #define LOC                         0.99        // level of confidence, use 0.99 for 99% confidence
 
 int seed = 13;
+double stop = 0;
 unsigned long external_arrivals;
 unsigned long max_processable_jobs = INFINITE_PROCESSABLE_JOBS;
 
 double lambda[NODES] = {1.9, 0.8, 0.0, 0.0};
 double mu[NODES] = {1.0/2, 1.0/3.2, 1.0/2.5, 1.0/1.3};
-int servers_num[NODES] = {4, 4, 2, 2};
-unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY, 8};
+int servers_num[NODES] = {5, 6, 3, 5};
+unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY};
 double p[3] = {0.65, 0.2, 0.4};
 
 typedef enum {
@@ -137,11 +138,13 @@ void extract_analysis(analysis*, node_stats*, time_integrated*, double);
 void extract_statistic_analysis(analysis**, statistic_analysis*);
 void print_replica(analysis*);
 void print_statistic_result(statistic_analysis*);
+void create_csv();
+void save_steady_state(analysis**);
 void loading_bar(double);
 
 int main(void)
 {
-  event *ev = NULL, *event_list = NULL, *new_dep, *new_arr;
+  event *ev = NULL, *event_list, *new_dep, *new_arr;
   node_stats *nodes;
   time_integrated *areas;
   job *job = NULL;
@@ -150,13 +153,15 @@ int main(void)
   double current_time = START, next_time;
   analysis **result;
   statistic_analysis statistic_result;
-
-  PlantSeeds(seed);
+  
   init_result(&result);
 
   printf("Simulation in progress, please wait\n");
   loading_bar(0.0);  
   for(int rep=0; rep<REPLICAS_NUM; rep++){
+    PlantSeeds(seed);
+    stop += STOP/REPLICAS_NUM;
+
     external_arrivals = 0;
     init_event_list(&event_list);
     init_nodes(&nodes);
@@ -197,7 +202,7 @@ int main(void)
 
         if(actual_server == outside){
           new_arr = GenerateEvent(job_arrival, actual_node, outside, current_time + GetInterArrival(actual_node)); // generate next arrival event
-          if(new_arr->time < STOP && external_arrivals < max_processable_jobs){ // schedule event only on condition
+          if(new_arr->time < stop && external_arrivals < max_processable_jobs){ // schedule event only on condition
             InsertEvent(&event_list, new_arr);
             external_arrivals++;
           }
@@ -243,15 +248,9 @@ int main(void)
     loading_bar((double)(rep+1)/REPLICAS_NUM); // update loading bar
   }
 
-  // extract statistic analysis data from the entire simulation
-  extract_statistic_analysis(result, &statistic_result);
-
-  // print output
-  //print_replica(result[0]);
-  print_statistic_result(&statistic_result);
-
   // save analysis to csv
-  //save_steady_state(result, 20);
+  create_csv();
+  save_steady_state(result);
 
   return 0;
 }
@@ -450,7 +449,7 @@ void init_event_list(event **list){
   for(int node=0; node<NODES; node++){
     if(lambda[node] != 0){
       new_arrival = GenerateEvent(job_arrival, node, outside, START + GetInterArrival(node));
-      if(new_arrival->time < STOP && external_arrivals < max_processable_jobs){ // schedule event only on condition
+      if(new_arrival->time < stop && external_arrivals < max_processable_jobs){ // schedule event only on condition
         InsertEvent(list, new_arrival);
         external_arrivals++;
       }
@@ -703,12 +702,35 @@ void print_statistic_result(statistic_analysis *result){
   printf("Average max response time = %7.3lf s +/- %6.3f s\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
 }
 
-void save_transient(analysis **result, int replicas_num){
-  FILE *fpt = fopen("steady_state.csv", "a");
+void create_csv(){
+  char fileName[30];
+  snprintf(fileName, 30, "improved_steady_state_%03d.csv", seed);
+  FILE *csv = fopen(fileName, "w");
+  fclose(csv);
+}
 
-  fprintf(fpt,"Interarrival; Server Organization 1; Server Organization 2; Server Organization 3;\n");
+void save_steady_state(analysis **result){
+  char fileName[30];
+  snprintf(fileName, 30, "improved_steady_state_%03d.csv", seed);
+  FILE *csv = fopen(fileName, "a");
 
-  fclose(fpt);
+  for(int k=0; k<NODES; k++){
+    fprintf(csv,"Node %d\n;time (s);Interarrival;Wait;Delay;Service;# in node;# in queue;Utilizzation;ploss;\n", k+1);
+    for(int rep=0; rep<REPLICAS_NUM; rep++){
+      fprintf(csv,";%.2lf; ", (rep+1)*(STOP/REPLICAS_NUM));
+      fprintf(csv,"%lf;", result[rep][k].interarrival);
+      fprintf(csv,"%lf;", result[rep][k].wait);
+      fprintf(csv,"%lf;", result[rep][k].delay);
+      fprintf(csv,"%lf;", result[rep][k].service);
+      fprintf(csv,"%lf;", result[rep][k].Ns);
+      fprintf(csv,"%lf;", result[rep][k].Nq);
+      fprintf(csv,"%lf;", result[rep][k].utilization);
+      fprintf(csv,"%.4lf;\n", result[rep][k].ploss);
+    }
+    fprintf(csv,"\n");
+  }
+
+  fclose(csv);
 }
 
 void loading_bar(double progress){
