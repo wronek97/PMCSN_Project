@@ -7,9 +7,7 @@
 #include "lib/rvms.h"
 
 // SIMULATION CONFIG VALUES
-#define FINITE_HORIZON_SIMULATION       0           // finite horizon simulation mode
 #define REPLICAS_NUM                    400         // number of runs
-#define INFINITE_HORIZON_SIMULATION     1           // infinite horizon simulation mode
 #define BATCH_NUM                       200         // number of batches
 
 #define START                           0.0         // initial (open the door) time
@@ -24,6 +22,17 @@
 
 
 // DATA STRUCTURES
+typedef enum {
+  base,
+  resized,
+  improved
+} project_phase;
+
+typedef enum {
+  finite_horizon,
+  infinite_horizon
+} simulation_mode;
+
 typedef enum {
   flight,
   hotel,

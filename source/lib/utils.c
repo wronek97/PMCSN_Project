@@ -209,8 +209,7 @@ void reset_stats(node_stats *nodes, time_integrated *areas, double *first_batch_
 /**
 * Extract results from a single run (finite horizon) or a single batch (infinite horizon) of the simulation
 **/
-void extract_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int mode, int *servers_num, 
-                      double *first_batch_arrival, double oper_period){
+void extract_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int *servers_num, double oper_period, double *first_batch_arrival){
   double total_service[NODES];
 
   for(int k=0; k<NODES; k++){
@@ -223,8 +222,12 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
   for(int i=0; i<NODES; i++){
     result[i].jobs = nodes[i].processed_jobs;
 
-    if (mode == FINITE_HORIZON_SIMULATION) result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
-    else result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
+    if(first_batch_arrival == NULL){
+      result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    }
+    else{
+      result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
+    }
 
     result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
 
@@ -258,7 +261,7 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
 **/
 void extract_statistic_analysis(analysis **result, statistic_analysis *statistic_result, int mode){
   long iter_num;
-  if (mode == FINITE_HORIZON_SIMULATION) iter_num = REPLICAS_NUM;
+  if (mode == finite_horizon) iter_num = REPLICAS_NUM;
   else iter_num = BATCH_NUM;
   double u = 1.0 - (1.0 - LOC)/2;                     // interval parameter
   double t = idfStudent(iter_num - 1, u);             // critical value of t
@@ -401,8 +404,13 @@ void print_replica(analysis *result, int *servers_num){
 * Print statistic result of the simulation
 **/
 void print_statistic_result(statistic_analysis *result, int mode){
-  if (mode == FINITE_HORIZON_SIMULATION) printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
-  else printf("Based on a simulation split into %ld batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
+  if(mode == finite_horizon){
+    printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
+  }
+  else if(mode == infinite_horizon){
+    printf("Based on a simulation split into %ld batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
+  }
+
   for(int k=0; k<NODES; k++){
     printf("Node %d:\n", k+1);
     printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", result->interarrival[k][mean], result->interarrival[k][interval]);
@@ -421,9 +429,22 @@ void print_statistic_result(statistic_analysis *result, int mode){
 /**
 * Save statistic result of the infinite horizon simulation
 **/
-void save_infinite_to_csv(statistic_analysis *result, int seed){
-  char fileName[29];
-  snprintf(fileName, 29, "initial_steady_state_%03d.csv", seed);
+void save_infinite_to_csv(statistic_analysis *result, project_phase phase, int seed){
+  char fileName[64];
+  switch(phase){
+    case base:
+      snprintf(fileName, 26, "base_steady_state_%03d.csv", seed);
+      break;
+    case resized:
+      snprintf(fileName, 29, "resized_steady_state_%03d.csv", seed);
+      break;
+    case improved:
+      snprintf(fileName, 29, "improved_steady_state_%03d.csv", seed);
+      break;
+    default:
+      snprintf(fileName, 21, "steady_state_%03d.csv", seed);
+      break;
+  }
   FILE *csv = fopen(fileName, "w");
 
   for(int k=0; k<NODES; k++){
