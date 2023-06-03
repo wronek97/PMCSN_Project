@@ -4,24 +4,7 @@
   2) max average response time     < 12 s  (= 11.84 s)
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include "rngs.h"
-#include "rvgs.h"
-#include "rvms.h"
-
-#define START                       0.0         // initial (open the door) time
-#define STOP                        86400.0     // terminal (close the door) time
-#define REPLICAS_NUM                400
-#define NODES                       4           // number of nodes in the system
-#define INFINITE_CAPACITY           1 << 25     // large number to simulate infinite queue
-#define INFINITE_PROCESSABLE_JOBS   1 << 25     // large number to simulate infinite
-#define LOC                         0.99        // level of confidence, use 0.99 for 99% confidence
-
-int seed = 13;
-unsigned long external_arrivals;
-unsigned long max_processable_jobs = INFINITE_PROCESSABLE_JOBS;
+#include "config.h"
 
 double lambda[NODES] = {1.9, 0.8, 0.0, 0.0};
 double mu[NODES] = {1.0/2, 1.0/3.2, 1.0/2.5, 1.0/1.3};
@@ -29,94 +12,15 @@ int servers_num[NODES] = {5, 6, 3, 4};
 unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY, 8};
 double p[3] = {0.65, 0.2, 0.4};
 
-typedef enum {
-  flight,
-  hotel,
-  taxi,
-  payment_control,
-  outside = INFINITE_CAPACITY
-} node_id;
+int seed = 17;
+unsigned long external_arrivals;
+unsigned long max_processable_jobs = INFINITE_PROCESSABLE_JOBS;
+double first_batch_arrival[NODES] = {0, 0, 0, 0};
 
-typedef enum {
-  job_arrival,
-  job_departure
-} event_type;
+int mode;
+double stop_time;
+long iter_num;
 
-typedef enum {
-  idle,
-  busy
-} status;
-
-enum {
-  mean,
-  interval
-};
-
-typedef struct {
-  double node_area;         // time integrated jobs in the node
-  double queue_area;        // time integrated jobs in the queue
-} time_integrated;
-
-typedef struct event{
-  event_type type;
-  node_id node;
-  int server;               // if type == job_arrival, it's used to distinguish between external and internal arrival
-  double time;              // event occurrence time
-  struct event *next;
-} event;
-
-typedef struct job{
-  double arrival;
-  double service;
-  struct job *next;
-} job;
-
-typedef struct {
-  int    status;                   // 0 = idle, 1 = busy
-  double service_time;             // total service time of the server
-  long   served_jobs;              // total jobs served by the server
-  double last_departure_time;      // required to select longest idle server
-  job *serving_job;
-} server_stats;
-
-typedef struct {
-  long queue_jobs;        // jobs actually in the queue
-  long service_jobs;      // jobs actually in the servers
-  long node_jobs;         // jobs actually in the node
-  long rejected_jobs;     // jobs rejected by the limited queue
-  long processed_jobs;    // jobs processed by the node
-  double last_arrival;    // last arrival time of a job in the node
-  job *queue;             // list of jobs in the queue of the node
-  int total_servers;      // number of servers in the node
-  server_stats *servers;  // server status and stats
-} node_stats;
-
-typedef struct {
-  long jobs;
-  double interarrival;
-  double wait;
-  double delay;
-  double service;
-  double Ns;
-  double Nq;
-  double utilization;
-  double ploss;
-  double *server_utilization;
-  double *server_service;
-  double *server_share;
-} analysis;
-
-typedef struct { // [0] = mean, [1] = confidence interval
-  double interarrival[NODES][2];
-  double wait[NODES][2];
-  double delay[NODES][2];
-  double service[NODES][2];
-  double Ns[NODES][2];
-  double Nq[NODES][2];
-  double utilization[NODES][2];
-  double ploss[NODES][2];
-  double avg_max_wait[2];
-} statistic_analysis;
 
 double GetInterArrival(node_id);
 double GetService(node_id);
@@ -128,6 +32,8 @@ event* ExtractEvent(event**);
 job* GenerateJob(double, double);
 void InsertJob(job**, job*);
 job* ExtractJob(job**);
+void process_arrival(event**, double, node_stats*, int, int);
+void process_departure(event**, double, node_stats*, int, int);
 void init_event_list(event**);
 void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
@@ -135,119 +41,147 @@ void init_areas(time_integrated**);
 void init_result(analysis***);
 void extract_analysis(analysis*, node_stats*, time_integrated*, double);
 void extract_statistic_analysis(analysis**, statistic_analysis*);
+void reset_stats(node_stats*, time_integrated*);
 void print_replica(analysis*);
 void print_statistic_result(statistic_analysis*);
+void save_infinite_to_csv(statistic_analysis*);
 void loading_bar(double);
 
-int main(void)
+
+int main(int argc, char *argv[])
 {
-  event *ev = NULL, *event_list = NULL, *new_dep, *new_arr;
+  event *ev = NULL, *event_list = NULL;
   node_stats *nodes;
   time_integrated *areas;
-  job *job = NULL;
   node_id actual_node;
-  int actual_server;
+  int actual_server, current_batch = 0;
   double current_time = START, next_time;
   analysis **result;
   statistic_analysis statistic_result;
 
-  init_result(&result);
+  fflush(stdout);
+  if (argc != 2) {
+    printf("Usage: ./simulate_resized <FINITE|INFINITE>\n");
+    exit(0);
+  }
+  
+  //if (strcmp(argv[1], "FINITE") == 0) mode = FINITE_HORIZON_SIMULATION;
+  //else if (strcmp(argv[1], "INFINITE") == 0) mode = INFINITE_HORIZON_SIMULATION;
+  //else printf("Specify the simulation mode: FINITE or INFINITE\n"); exit(0);
+
+  mode = FINITE_HORIZON_SIMULATION;
+  stop_time = FINITE_HORIZON_STOP;
+  iter_num = REPLICAS_NUM;
 
   PlantSeeds(seed);
-  
+
   printf("Simulation in progress, please wait\n");
   loading_bar(0.0);
-  for(int rep=0; rep<REPLICAS_NUM; rep++){
-    external_arrivals = 0;
-    init_event_list(&event_list);
-    init_nodes(&nodes);
-    init_areas(&areas);
 
-    while(event_list != NULL){
-      ev = ExtractEvent(&event_list);
-      actual_node = ev->node;
-      actual_server = ev->server;
-      next_time = ev->time;
+  switch (mode) {
+    case FINITE_HORIZON_SIMULATION:
+      init_result(&result);
+      for(int rep=0; rep<REPLICAS_NUM; rep++){
+        external_arrivals = 0;
+        init_event_list(&event_list);
+        init_nodes(&nodes);
+        init_areas(&areas);
 
-      for(int node=0; node<NODES; node++){ // update integrals
-        areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
-        areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
-      }
-      current_time = next_time;
+        while(event_list != NULL){
+          // extract next event
+          ev = ExtractEvent(&event_list);
+          actual_node = ev->node;
+          actual_server = ev->server;
+          next_time = ev->time;
 
-      if(ev->type == job_arrival){ // process an arrival
-        if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers + queue_len[actual_node]){ // there is availble space in queue
-          job = GenerateJob(current_time, GetService(actual_node));
-          if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers){
-            int selected_server = SelectServer(nodes[actual_node]); // find available server
-            nodes[actual_node].servers[selected_server].status = busy;
-            nodes[actual_node].servers[selected_server].serving_job = job;
-            new_dep = GenerateEvent(job_departure, actual_node, selected_server, current_time + job->service);
-            InsertEvent(&event_list, new_dep);
+          // update integrals for every node
+          for(int node=0; node<NODES; node++){ 
+            areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
+            areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
           }
-          else{ // insert job in queue
-            InsertJob(&(nodes[actual_node].queue), job);
-            nodes[actual_node].queue_jobs++;
-          }
-          nodes[actual_node].node_jobs++;
-          nodes[actual_node].last_arrival = current_time;
-        }
-        else{ // reject the job
-          nodes[actual_node].rejected_jobs++;
+          current_time = next_time;
+
+          // process an arrival on a free server or in queue
+          if(ev->type == job_arrival) process_arrival(&event_list, current_time, nodes, actual_node, actual_server);
+          
+          // process a departure from the specific busy server 
+          else process_departure(&event_list, current_time, nodes, actual_node, actual_server);
+          free(ev);
         }
 
-        if(actual_server == outside){
-          new_arr = GenerateEvent(job_arrival, actual_node, outside, current_time + GetInterArrival(actual_node)); // generate next arrival event
-          if(new_arr->time < STOP && external_arrivals < max_processable_jobs){ // schedule event only on condition
-            InsertEvent(&event_list, new_arr);
-            external_arrivals++;
-          }
-        }
-      }
-      else{ //process a departure from selected server
-        actual_server = ev->server;
-        double service = nodes[actual_node].servers[actual_server].serving_job->service;
-        nodes[actual_node].servers[actual_server].service_time += service;
-        nodes[actual_node].servers[actual_server].served_jobs++;
-        nodes[actual_node].servers[actual_server].last_departure_time = current_time;
-
-        nodes[actual_node].processed_jobs++;
-        nodes[actual_node].node_jobs--;
-        free(nodes[actual_node].servers[actual_server].serving_job);
-
-        if(nodes[actual_node].queue_jobs > 0){
-          job = ExtractJob(&(nodes[actual_node].queue));
-          nodes[actual_node].servers[actual_server].serving_job = job;
-          nodes[actual_node].queue_jobs--;
-
-          new_dep = GenerateEvent(job_departure, actual_node, actual_server, current_time + job->service);
-          InsertEvent(&event_list, new_dep);
-        }
-        else{
-          nodes[actual_node].servers[actual_server].status = idle;
-        }
+        // extract analysis data from the single replica
+        extract_analysis(result[rep], nodes, areas, current_time);
         
-        new_arr = GenerateEvent(job_arrival, SwitchNode(p, actual_node), actual_server, current_time);
-        InsertEvent(&event_list, new_arr);
+        // free memory
+        free(areas);
+        free(nodes);
+
+        // update loading bar
+        loading_bar((double)(rep+1)/REPLICAS_NUM);
       }
 
-      free(ev);
-    }
+      // extract statistic analysis data from the entire simulation
+      extract_statistic_analysis(result, &statistic_result);
 
-    // extract analysis data from the replica
-    extract_analysis(result[rep], nodes, areas, current_time);
-    
-    // free memory
-    free(areas);
-    free(nodes);
+      // print output and save analysis to csv
+      print_statistic_result(&statistic_result);
+      //save_steady_state(result, 20);
+    break;
 
-    loading_bar((double)(rep+1)/REPLICAS_NUM); // update loading bar
+
+    case INFINITE_HORIZON_SIMULATION:
+      init_result(&result);
+      init_event_list(&event_list);
+      init_nodes(&nodes);
+      init_areas(&areas);;
+      external_arrivals = 0;
+
+      while(event_list != NULL){
+        // extract next event
+        ev = ExtractEvent(&event_list);
+        actual_node = ev->node;
+        actual_server = ev->server;
+        next_time = ev->time;
+
+        // extract analysis data from the single batch
+        if(current_time >= (current_batch + 1) * (stop_time / BATCH_NUM) && current_batch != BATCH_NUM - 1){
+          extract_analysis(result[current_batch], nodes, areas, stop_time / BATCH_NUM);
+          loading_bar((double)(current_batch+1)/BATCH_NUM); // update loading bar
+          reset_stats(nodes, areas);
+          current_batch++;
+        }
+
+        // update integrals for every node
+        for(int node=0; node<NODES; node++){ 
+          areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
+          areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
+        }
+        current_time = next_time;
+
+        // process an arrival on a free server or in queue
+        if(ev->type == job_arrival) process_arrival(&event_list, current_time, nodes, actual_node, actual_server);
+        
+        // process a departure from the specific busy server
+        else process_departure(&event_list, current_time, nodes, actual_node, actual_server);
+        
+        free(ev);
+      }
+
+      // extract analysis data from last batch and complete loading bar
+      extract_analysis(result[BATCH_NUM - 1], nodes, areas, current_time);
+      loading_bar(1.0);
+      
+      // extract statistic analysis data from the entire simulation
+      extract_statistic_analysis(result, &statistic_result);
+
+      // print output and save analysis to csv
+      print_statistic_result(&statistic_result);
+      save_infinite_to_csv(&statistic_result);
+
+
+    default:
+    break;
   }
-
-  //print_replica(result[119]);
-  extract_statistic_analysis(result, &statistic_result);
-  print_statistic_result(&statistic_result);
-
   return 0;
 }
 
@@ -439,13 +373,73 @@ job* ExtractJob(job **queue)
   return served_job;
 }
 
+void process_arrival(event **list, double current_time, node_stats *nodes, int actual_node, int actual_server) {
+  job *job = NULL;
+  event *new_dep, *new_arr;
+  if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers + queue_len[actual_node]){ // there is availble space in queue
+    job = GenerateJob(current_time, GetService(actual_node));
+    if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers){
+      int selected_server = SelectServer(nodes[actual_node]); // find available server
+      nodes[actual_node].servers[selected_server].status = busy;
+      nodes[actual_node].servers[selected_server].serving_job = job;
+      new_dep = GenerateEvent(job_departure, actual_node, selected_server, current_time + job->service);
+      InsertEvent(list, new_dep);
+    }
+    else { // insert job in queue
+      InsertJob(&(nodes[actual_node].queue), job);
+      nodes[actual_node].queue_jobs++;
+    }
+    nodes[actual_node].node_jobs++;
+    nodes[actual_node].last_arrival = current_time;
+  }
+  else { // reject the job
+    nodes[actual_node].rejected_jobs++;
+  }
+
+  if(actual_server == outside){
+    new_arr = GenerateEvent(job_arrival, actual_node, outside, current_time + GetInterArrival(actual_node)); // generate next arrival event
+    if(new_arr->time < stop_time && external_arrivals < max_processable_jobs){ // schedule event only on condition
+      InsertEvent(list, new_arr);
+      external_arrivals++;
+    }
+  }
+}
+
+void process_departure(event **list, double current_time, node_stats *nodes, int actual_node, int actual_server) {
+  job *job = NULL;
+  event *new_dep, *new_arr;
+  double service = nodes[actual_node].servers[actual_server].serving_job->service;
+  nodes[actual_node].servers[actual_server].service_time += service;
+  nodes[actual_node].servers[actual_server].served_jobs++;
+  nodes[actual_node].servers[actual_server].last_departure_time = current_time;
+
+  nodes[actual_node].processed_jobs++;
+  nodes[actual_node].node_jobs--;
+  free(nodes[actual_node].servers[actual_server].serving_job);
+
+  if(nodes[actual_node].queue_jobs > 0){
+    job = ExtractJob(&(nodes[actual_node].queue));
+    nodes[actual_node].servers[actual_server].serving_job = job;
+    nodes[actual_node].queue_jobs--;
+
+    new_dep = GenerateEvent(job_departure, actual_node, actual_server, current_time + job->service);
+    InsertEvent(list, new_dep);
+  }
+  else{
+    nodes[actual_node].servers[actual_server].status = idle;
+  }
+  
+  new_arr = GenerateEvent(job_arrival, SwitchNode(p, actual_node), actual_server, current_time);
+  InsertEvent(list, new_arr);
+}
+
 void init_event_list(event **list){
   event *new_arrival;
 
   for(int node=0; node<NODES; node++){
     if(lambda[node] != 0){
       new_arrival = GenerateEvent(job_arrival, node, outside, START + GetInterArrival(node));
-      if(new_arrival->time < STOP && external_arrivals < max_processable_jobs){ // schedule event only on condition
+      if(new_arrival->time < stop_time && external_arrivals < max_processable_jobs){ // schedule event only on condition
         InsertEvent(list, new_arrival);
         external_arrivals++;
       }
@@ -482,12 +476,12 @@ void init_areas(time_integrated **areas){
 }
 
 void init_result(analysis ***result){
-  *result = calloc(REPLICAS_NUM, sizeof(analysis*));
+  *result = calloc(iter_num, sizeof(analysis*));
   if(*result == NULL){
     printf("Error allocating memory for: analysis\n");
     exit(4);
   }
-  for(int rep=0; rep<REPLICAS_NUM; rep++){
+  for(int rep=0; rep<iter_num; rep++){
     (*result)[rep] = calloc(NODES, sizeof(analysis));
     if(*result == NULL){
       printf("Error allocating memory for: analysis\n");
@@ -518,7 +512,8 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
   for(int i=0; i<NODES; i++){
     result[i].jobs = nodes[i].processed_jobs;
 
-    result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    if (mode == FINITE_HORIZON_SIMULATION) result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    else result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
 
     result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
 
@@ -549,7 +544,7 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
 
 void extract_statistic_analysis(analysis **result, statistic_analysis *statistic_result){
   double u = 1.0 - (1.0 - LOC)/2;                     // interval parameter
-  double t = idfStudent(REPLICAS_NUM - 1, u);         // critical value of t
+  double t = idfStudent(iter_num - 1, u);             // critical value of t
   double diff;
   struct {
     double interarrival;
@@ -562,7 +557,7 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
     double ploss;
     double max_wait;
   } sum;
-  double *max_wait = calloc(REPLICAS_NUM, sizeof(double));
+  double *max_wait = calloc(iter_num, sizeof(double));
   
   if(max_wait == NULL){
     printf("Error allocating memory: max_wait calloc\n");
@@ -587,7 +582,7 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
     statistic_result->ploss[i][mean] = 0;
     sum.ploss = 0;
 
-    for(int n=1; n<=REPLICAS_NUM; n++){
+    for(int n=1; n<=iter_num; n++){
       diff = result[n-1][i].interarrival - statistic_result->interarrival[i][mean];
       sum.interarrival += diff * diff * (n - 1.0) / n;
       statistic_result->interarrival[i][mean] += diff / n;
@@ -621,15 +616,15 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
       statistic_result->ploss[i][mean] += diff / n;
     }
 
-    if(REPLICAS_NUM > 1){
-      statistic_result->interarrival[i][interval] = t * sqrt(sum.interarrival / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result->wait[i][interval] = t * sqrt(sum.wait / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result->delay[i][interval] = t * sqrt(sum.delay / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result->service[i][interval] = t * sqrt(sum.service / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result->Ns[i][interval] = t * sqrt(sum.Ns / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result->Nq[i][interval] = t * sqrt(sum.Nq / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result->utilization[i][interval] = t * sqrt(sum.utilization / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
-      statistic_result->ploss[i][interval] = t * sqrt(sum.ploss / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+    if(iter_num > 1){
+      statistic_result->interarrival[i][interval] = t * sqrt(sum.interarrival / iter_num) / sqrt(iter_num - 1);
+      statistic_result->wait[i][interval] = t * sqrt(sum.wait / iter_num) / sqrt(iter_num - 1);
+      statistic_result->delay[i][interval] = t * sqrt(sum.delay / iter_num) / sqrt(iter_num - 1);
+      statistic_result->service[i][interval] = t * sqrt(sum.service / iter_num) / sqrt(iter_num - 1);
+      statistic_result->Ns[i][interval] = t * sqrt(sum.Ns / iter_num) / sqrt(iter_num - 1);
+      statistic_result->Nq[i][interval] = t * sqrt(sum.Nq / iter_num) / sqrt(iter_num - 1);
+      statistic_result->utilization[i][interval] = t * sqrt(sum.utilization / iter_num) / sqrt(iter_num - 1);
+      statistic_result->ploss[i][interval] = t * sqrt(sum.ploss / iter_num) / sqrt(iter_num - 1);
     }
     else{
       printf("ERROR - insufficient data\n");
@@ -639,7 +634,7 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
 
   statistic_result->avg_max_wait[mean] = 0;
   sum.max_wait = 0;
-  for(int n=1; n<=REPLICAS_NUM; n++){
+  for(int n=1; n<=iter_num; n++){
     max_wait[n-1] = 0;
     for(int i=0; i<NODES; i++){
       max_wait[n-1] += result[n-1][i].wait;
@@ -649,12 +644,26 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
     sum.max_wait += diff * diff * (n - 1.0) / n;
     statistic_result->avg_max_wait[mean] += diff / n;
   }
-  if(REPLICAS_NUM > 1){
-      statistic_result->avg_max_wait[interval] = t * sqrt(sum.max_wait / REPLICAS_NUM) / sqrt(REPLICAS_NUM - 1);
+  if(iter_num > 1){
+      statistic_result->avg_max_wait[interval] = t * sqrt(sum.max_wait / iter_num) / sqrt(iter_num - 1);
   }
   else{
     printf("ERROR - insufficient data\n");
     exit(5);
+  }
+}
+
+void reset_stats(node_stats *nodes, time_integrated *areas){
+  for(int i=0; i<NODES; i++){
+    first_batch_arrival[i] = nodes[i].last_arrival;
+    nodes[i].processed_jobs = 0;
+    nodes[i].rejected_jobs = 0;
+    for(int s=0; s<nodes[i].total_servers; s++){
+      nodes[i].servers[s].service_time = 0;
+      nodes[i].servers[s].served_jobs = 0;
+    }
+    areas[i].node_area = 0;
+    areas[i].queue_area = 0;
   }
 }
 
@@ -682,7 +691,8 @@ void print_replica(analysis *result){
 }
 
 void print_statistic_result(statistic_analysis *result){
-  printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
+  if (mode == FINITE_HORIZON_SIMULATION) printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
+  else printf("Based on a simulation split into %ld batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
   for(int k=0; k<NODES; k++){
     printf("Node %d:\n", k+1);
     printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", result->interarrival[k][mean], result->interarrival[k][interval]);
@@ -696,6 +706,27 @@ void print_statistic_result(statistic_analysis *result){
     printf("\n");
   }
   printf("Average max response time = %7.3lf s +/- %6.3f s\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
+}
+
+void save_infinite_to_csv(statistic_analysis *result){
+  char fileName[29];
+  snprintf(fileName, 29, "initial_steady_state_%03d.csv", seed);
+  FILE *csv = fopen(fileName, "w");
+
+  for(int k=0; k<NODES; k++){
+    fprintf(csv,"NODE %d;mean;;interval;\n", k+1);
+    fprintf(csv,"avg interarrival; %lf;+/-;%lf;\n", result->interarrival[k][mean], result->interarrival[k][interval]);
+    fprintf(csv,"avg wait; %lf;+/-;%lf;\n", result->wait[k][mean], result->wait[k][interval]);
+    fprintf(csv,"avg delay; %lf;+/-;%lf;\n", result->delay[k][mean], result->delay[k][interval]);
+    fprintf(csv,"avg service; %lf;+/-;%lf;\n", result->service[k][mean], result->service[k][interval]);
+    fprintf(csv,"avg # in node; %lf;+/-;%lf;\n", result->Ns[k][mean], result->Ns[k][interval]);
+    fprintf(csv,"avg # in queue; %lf;+/-;%lf;\n", result->Nq[k][mean], result->Nq[k][interval]);
+    fprintf(csv,"avg utilizzation; %lf;+/-;%lf;\n", result->utilization[k][mean], result->utilization[k][interval]);
+    fprintf(csv,"ploss; %.4lf%%;+/-;%.4lf%%;\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
+    fprintf(csv,"\n");
+  }
+  fprintf(csv,"Average max response time:; %.4lf;+/-;%.4lf;\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
+  fclose(csv);
 }
 
 void loading_bar(double progress){
@@ -716,6 +747,5 @@ void loading_bar(double progress){
     }
     printf("]");
   }
-  
   fflush(stdout);
 }
