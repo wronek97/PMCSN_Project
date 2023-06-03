@@ -48,7 +48,10 @@ if [ $topology != "BASE" ] && [ $topology != "RESIZED" ] && [ $topology != "IMPR
         exit 1
 fi
 
-# compile file and start the simulation
-# we use lowercase topology flag to run the correct simulation 
+# compile file 
+cd source/
 make
+
+# start the correct simulation using lowercase flag
+cd ..
 ./bin/simulation_${topology,,} $mode 
