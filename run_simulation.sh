@@ -54,4 +54,5 @@ make
 
 # start the correct simulation using lowercase flag
 cd ..
+clear
 ./bin/simulation_${topology,,} $mode 

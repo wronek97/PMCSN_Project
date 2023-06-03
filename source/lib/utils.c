@@ -434,32 +434,32 @@ void save_to_csv(statistic_analysis *result, project_phase phase, int mode, int 
   if(mode == finite_horizon){
     switch(phase){
       case base:
-        snprintf(filename, 44, "results//transient//base_transient_%03d.csv", seed);
+        snprintf(filename, 44, "analysis//transient//base_transient_%03d.csv", seed);
         break;
       case resized:
-        snprintf(filename, 47, "results//transient//resized_transient_%03d.csv", seed);
+        snprintf(filename, 47, "analysis//transient//resized_transient_%03d.csv", seed);
         break;
       case improved:
-        snprintf(filename, 48, "results//transient//improved_transient_%03d.csv", seed);
+        snprintf(filename, 48, "analysis//transient//improved_transient_%03d.csv", seed);
         break;
       default:
-        snprintf(filename, 39, "results//transient//transient_%03d.csv", seed);
+        snprintf(filename, 39, "analysis//transient//transient_%03d.csv", seed);
         break;
     }
   }
   else if(mode == infinite_horizon){
     switch(phase){
       case base:
-        snprintf(filename, 50, "results//steady_state//base_steady_state_%03d.csv", seed);
+        snprintf(filename, 50, "analysis//steady_state//base_steady_state_%03d.csv", seed);
         break;
       case resized:
-        snprintf(filename, 53, "results//steady_state//resized_steady_state_%03d.csv", seed);
+        snprintf(filename, 53, "analysis//steady_state//resized_steady_state_%03d.csv", seed);
         break;
       case improved:
-        snprintf(filename, 54, "results//steady_state//improved_steady_state_%03d.csv", seed);
+        snprintf(filename, 54, "analysis//steady_state//improved_steady_state_%03d.csv", seed);
         break;
       default:
-        snprintf(filename, 45, "results//steady_state//steady_state_%03d.csv", seed);
+        snprintf(filename, 45, "analysis//steady_state//steady_state_%03d.csv", seed);
         break;
     }
   }
