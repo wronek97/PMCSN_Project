@@ -17,8 +17,8 @@
 #define INFINITE_HORIZON_STOP           43200000.0  // terminal (close the door) time (500 days for steady state analysis)
 
 #define NODES                           4           // number of nodes in the system
-#define INFINITE_CAPACITY               1 << 25     // large number to simulate infinite queue
-#define INFINITE_PROCESSABLE_JOBS       1 << 25     // large number to simulate infinite
+#define INFINITE_CAPACITY               1 << 27     // large number to simulate infinite queue
+#define INFINITE_PROCESSABLE_JOBS       1 << 27     // large number to simulate infinite
 #define LOC                             0.99        // level of confidence, use 0.99 for 99% confidence
 
 
