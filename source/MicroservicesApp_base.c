@@ -92,6 +92,7 @@ int main(int argc, char *argv[])
           
           // process a departure from the specific busy server 
           else process_departure(&event_list, current_time, nodes, actual_node, actual_server);
+          
           free(ev);
         }
 
@@ -119,7 +120,7 @@ int main(int argc, char *argv[])
       init_result(&result);
       init_event_list(&event_list);
       init_nodes(&nodes);
-      init_areas(&areas);;
+      init_areas(&areas);
       external_arrivals = 0;
 
       while(event_list != NULL){
@@ -164,10 +165,12 @@ int main(int argc, char *argv[])
       print_statistic_result(&statistic_result, mode);
       save_infinite_to_csv(&statistic_result, seed);
 
+    break;
 
     default:
     break;
   }
+
   return 0;
 }
 
