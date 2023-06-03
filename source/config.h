@@ -7,7 +7,7 @@
 #include "lib/rvms.h"
 
 // SIMULATION CONFIG VALUES
-#define REPLICAS_NUM                    400         // number of runs
+#define REPLICAS_NUM                    200         // number of runs
 #define BATCH_NUM                       200         // number of batches
 
 #define START                           0.0         // initial (open the door) time

@@ -1,0 +1,41 @@
+NODE 1;mean;;interval;
+avg interarrival; 0.526402;+/-;0.000238;
+avg wait; 2.797404;+/-;0.005459;
+avg delay; 0.797915;+/-;0.004951;
+avg service; 1.999489;+/-;0.000860;
+avg # in node; 5.313472;+/-;0.011486;
+avg # in queue; 1.515620;+/-;0.009710;
+avg utilizzation; 0.759570;+/-;0.000467;
+ploss; 0.0000%;+/-;0.0000%;
+
+NODE 2;mean;;interval;
+avg interarrival; 0.847487;+/-;0.000501;
+avg wait; 3.534390;+/-;0.003841;
+avg delay; 0.334617;+/-;0.002765;
+avg service; 3.199773;+/-;0.001796;
+avg # in node; 4.169968;+/-;0.005756;
+avg # in queue; 0.394810;+/-;0.003360;
+avg utilizzation; 0.629193;+/-;0.000519;
+ploss; 0.0000%;+/-;0.0000%;
+
+NODE 3;mean;;interval;
+avg interarrival; 1.321105;+/-;0.001018;
+avg wait; 3.389776;+/-;0.007437;
+avg delay; 0.889540;+/-;0.006189;
+avg service; 2.500237;+/-;0.001927;
+avg # in node; 2.565747;+/-;0.006599;
+avg # in queue; 0.673332;+/-;0.004927;
+avg utilizzation; 0.630805;+/-;0.000696;
+ploss; 0.0000%;+/-;0.0000%;
+
+NODE 4;mean;;interval;
+avg interarrival; 0.370470;+/-;0.000148;
+avg wait; 1.631455;+/-;0.001869;
+avg delay; 0.331612;+/-;0.001561;
+avg service; 1.299844;+/-;0.000478;
+avg # in node; 4.403706;+/-;0.005837;
+avg # in queue; 0.895117;+/-;0.004358;
+avg utilizzation; 0.701718;+/-;0.000384;
+ploss; 0.0000%;+/-;0.0000%;
+
+Average max response time:; 11.3530;+/-;0.0105;

@@ -21,7 +21,7 @@ double first_batch_arrival[NODES] = {0, 0, 0, 0};
 int mode;
 double stop_time;
 long iter_num;
-
+project_phase phase = base;
 
 double GetInterArrival(node_id);
 double GetService(node_id);
@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
-      save_to_csv(&statistic_result, base, mode, seed);
+      save_to_csv(&statistic_result, phase, mode, seed);
       break;
 
 
@@ -169,7 +169,7 @@ int main(int argc, char *argv[])
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
-      save_to_csv(&statistic_result, base, mode, seed);
+      save_to_csv(&statistic_result, phase, mode, seed);
       break;
 
     default:
