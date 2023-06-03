@@ -22,6 +22,7 @@ int mode;
 double stop_time;
 long iter_num;
 
+
 double GetInterArrival(node_id);
 double GetService(node_id);
 void process_arrival(event**, double, node_stats*, int, int);
@@ -51,9 +52,13 @@ int main(int argc, char *argv[])
   }
   if(strcmp(argv[1], "FINITE") == 0){
     mode = finite_horizon;
+    stop_time = FINITE_HORIZON_STOP;
+    iter_num = REPLICAS_NUM;
   }
   else if(strcmp(argv[1], "INFINITE") == 0){
     mode = infinite_horizon;
+    stop_time = INFINITE_HORIZON_STOP;
+    iter_num = BATCH_NUM;
   }
   else{
     printf("Specify the simulation mode: FINITE or INFINITE\n");
@@ -67,10 +72,8 @@ int main(int argc, char *argv[])
 
   switch(mode){
     case finite_horizon:
-      stop_time = FINITE_HORIZON_STOP;
-      iter_num = REPLICAS_NUM;
       init_result(&result);
-      for(int rep=0; rep<REPLICAS_NUM; rep++){
+      for(int rep=0; rep<iter_num; rep++){
         external_arrivals = 0;
         init_event_list(&event_list);
         init_nodes(&nodes);
@@ -107,7 +110,7 @@ int main(int argc, char *argv[])
         free(nodes);
 
         // update loading bar
-        loading_bar((double)(rep+1)/REPLICAS_NUM);
+        loading_bar((double)(rep+1)/iter_num);
       }
 
       // extract statistic analysis data from the entire simulation
@@ -115,13 +118,11 @@ int main(int argc, char *argv[])
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
-      //save_steady_state(result, 20);
-    break;
+      save_to_csv(&statistic_result, base, mode, seed);
+      break;
 
 
     case infinite_horizon:
-      stop_time = INFINITE_HORIZON_STOP;
-      iter_num = BATCH_NUM;
       init_result(&result);
       init_event_list(&event_list);
       init_nodes(&nodes);
@@ -136,9 +137,9 @@ int main(int argc, char *argv[])
         next_time = ev->time;
 
         // extract analysis data from the single batch
-        if(current_time >= (current_batch + 1) * (stop_time / BATCH_NUM) && current_batch != BATCH_NUM - 1){
-          extract_analysis(result[current_batch], nodes, areas, servers_num, stop_time / BATCH_NUM, first_batch_arrival);
-          loading_bar((double)(current_batch+1)/BATCH_NUM); // update loading bar
+        if(current_time >= (current_batch + 1) * (stop_time / iter_num) && current_batch != iter_num - 1){
+          extract_analysis(result[current_batch], nodes, areas, servers_num, stop_time / iter_num, first_batch_arrival);
+          loading_bar((double)(current_batch+1)/iter_num); // update loading bar
           reset_stats(nodes, areas, first_batch_arrival);
           current_batch++;
         }
@@ -160,7 +161,7 @@ int main(int argc, char *argv[])
       }
 
       // extract analysis data from last batch and complete loading bar
-      extract_analysis(result[BATCH_NUM - 1], nodes, areas, servers_num, current_time, first_batch_arrival);
+      extract_analysis(result[iter_num - 1], nodes, areas, servers_num, current_time, first_batch_arrival);
       loading_bar(1.0);
       
       // extract statistic analysis data from the entire simulation
@@ -168,12 +169,11 @@ int main(int argc, char *argv[])
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
-      save_infinite_to_csv(&statistic_result, base, seed);
-
-    break;
+      save_to_csv(&statistic_result, base, mode, seed);
+      break;
 
     default:
-    break;
+      break;
   }
 
   return 0;

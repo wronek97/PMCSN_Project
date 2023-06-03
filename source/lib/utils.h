@@ -14,5 +14,5 @@ void print_replica(analysis*, int*);
 void print_statistic_result(statistic_analysis*, int);
 void extract_analysis(analysis*, node_stats*, time_integrated*, int*, double, double*);
 void extract_statistic_analysis(analysis**, statistic_analysis*, int);
-void save_infinite_to_csv(statistic_analysis*, project_phase, int);
+void save_to_csv(statistic_analysis*, project_phase, int, int);
 void loading_bar(double);

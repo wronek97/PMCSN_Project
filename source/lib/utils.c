@@ -427,25 +427,44 @@ void print_statistic_result(statistic_analysis *result, int mode){
 }
 
 /**
-* Save statistic result of the infinite horizon simulation
+* Save statistic result of the simulation
 **/
-void save_infinite_to_csv(statistic_analysis *result, project_phase phase, int seed){
-  char fileName[64];
-  switch(phase){
-    case base:
-      snprintf(fileName, 26, "base_steady_state_%03d.csv", seed);
-      break;
-    case resized:
-      snprintf(fileName, 29, "resized_steady_state_%03d.csv", seed);
-      break;
-    case improved:
-      snprintf(fileName, 29, "improved_steady_state_%03d.csv", seed);
-      break;
-    default:
-      snprintf(fileName, 21, "steady_state_%03d.csv", seed);
-      break;
+void save_to_csv(statistic_analysis *result, project_phase phase, int mode, int seed){
+  char filename[128];
+  if(mode == finite_horizon){
+    switch(phase){
+      case base:
+        snprintf(filename, 44, "results//transient//base_transient_%03d.csv", seed);
+        break;
+      case resized:
+        snprintf(filename, 47, "results//transient//resized_transient_%03d.csv", seed);
+        break;
+      case improved:
+        snprintf(filename, 48, "results//transient//improved_transient_%03d.csv", seed);
+        break;
+      default:
+        snprintf(filename, 39, "results//transient//transient_%03d.csv", seed);
+        break;
+    }
   }
-  FILE *csv = fopen(fileName, "w");
+  else if(mode == infinite_horizon){
+    switch(phase){
+      case base:
+        snprintf(filename, 50, "results//steady_state//base_steady_state_%03d.csv", seed);
+        break;
+      case resized:
+        snprintf(filename, 53, "results//steady_state//resized_steady_state_%03d.csv", seed);
+        break;
+      case improved:
+        snprintf(filename, 54, "results//steady_state//improved_steady_state_%03d.csv", seed);
+        break;
+      default:
+        snprintf(filename, 45, "results//steady_state//steady_state_%03d.csv", seed);
+        break;
+    }
+  }
+
+  FILE *csv = fopen(filename, "w");
 
   for(int k=0; k<NODES; k++){
     fprintf(csv,"NODE %d;mean;;interval;\n", k+1);
