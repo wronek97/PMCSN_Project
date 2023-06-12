@@ -9,9 +9,8 @@
 // SIMULATION CONFIG VALUES
 #define REPLICAS_NUM                    200         // number of runs
 #define BATCH_NUM                       200         // number of batches
-#define BATCH_SIZE                      500000       // number of jobs in a single batch
-// 500000*200 = 100.000.000 jobs che sono prodotti in circa 33.000.000 s (1.9 j/s e 0.8 j/s i due flussi esterni = 3 j/s)
-// con INFINITE_HORIZON_STOP abbiamo 116.000.000 jobs come arrivi esterni 
+#define BATCH_SIZE                      500000      // number of jobs in a single batch
+// 500000*200 = 100.000.000 jobs che sono prodotti in circa 37.000.000 s -> arrivi esterni 1.9 j/s + 0.8 j/s = 2.7 j/s 
 
 #define START                           0.0         // initial (open the door) time
 #define FINITE_HORIZON_STOP             86400.0     // terminal (close the door) time (1 day for transient analysis)
