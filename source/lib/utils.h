@@ -14,6 +14,7 @@ job* ExtractJob(job**);
 void reset_stats(node_stats*, time_integrated*, double*);
 void print_replica(analysis*, int*);
 void print_statistic_result(statistic_analysis*, int);
+void print_priority_statistic_result(statistic_analysis*, statistic_analysis*, int);
 void extract_analysis(analysis*, node_stats*, time_integrated*, int*, double, double*);
 void extract_priority_analysis(analysis*, node_stats*, time_integrated*, int, double, double*);
 void extract_statistic_analysis(analysis**, statistic_analysis*, int);

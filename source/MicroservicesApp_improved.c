@@ -110,21 +110,9 @@ int main(int argc, char *argv[])
       // extract statistic analysis data from the entire simulation
       extract_statistic_analysis(result, &statistic_result, mode);
       extract_priority_statistic_analysis(priority_result, &priority_statistic_result, mode);
-      for(int k=0; k<PRIORITY_CLASSES; k++){
-        printf("class %d:\n", k+1);
-        printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", priority_statistic_result.interarrival[k][mean], priority_statistic_result.interarrival[k][interval]);
-        printf("    avg wait             = %10.6lf +/- %9.6lf\n", priority_statistic_result.wait[k][mean], priority_statistic_result.wait[k][interval]);
-        printf("    avg delay            = %10.6lf +/- %9.6lf\n", priority_statistic_result.delay[k][mean], priority_statistic_result.delay[k][interval]);
-        printf("    avg service          = %10.6lf +/- %9.6lf\n", priority_statistic_result.service[k][mean], priority_statistic_result.service[k][interval]);
-        printf("    avg # in node        = %10.6lf +/- %9.6lf\n", priority_statistic_result.Ns[k][mean], priority_statistic_result.Ns[k][interval]);
-        printf("    avg # in queue       = %10.6lf +/- %9.6lf\n", priority_statistic_result.Nq[k][mean], priority_statistic_result.Nq[k][interval]);
-        printf("    avg utilizzation     = %10.6lf +/- %9.6lf\n", priority_statistic_result.utilization[k][mean], priority_statistic_result.utilization[k][interval]);
-        printf("    ploss                = %8.4lf %% +/- %7.4lf %%\n", 100 * priority_statistic_result.ploss[k][mean], 100 * priority_statistic_result.ploss[k][interval]);
-        printf("\n");
-      }
 
       // print output and save analysis to csv
-      print_statistic_result(&statistic_result, mode);
+      print_priority_statistic_result(&statistic_result, &priority_statistic_result, mode);
       save_to_csv(&statistic_result, phase, mode, seed);
       break;
 
@@ -172,30 +160,34 @@ double GetService(node_id k){
 }
 
 void process_arrival(event **list, double current_time, node_stats *nodes, int actual_node, int actual_server) {
-  job *job = NULL;
+  job *new_job = NULL;
   event *new_dep, *new_arr;
+
   if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers + queue_len[actual_node]){ // there is availble space in queue
-    job = GenerateJob(current_time, GetService(actual_node), SelectPriorityClass(PRIORITY_CLASSES, priority_probs));
+    new_job = GenerateJob(current_time, GetService(actual_node), SelectPriorityClass(PRIORITY_CLASSES, priority_probs));
     if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers){
       int selected_server = SelectServer(nodes[actual_node]); // find available server
       nodes[actual_node].servers[selected_server].status = busy;
-      nodes[actual_node].servers[selected_server].serving_job = job;
-      new_dep = GenerateEvent(job_departure, actual_node, selected_server, current_time + job->service);
+      nodes[actual_node].servers[selected_server].serving_job = new_job;
+      new_dep = GenerateEvent(job_departure, actual_node, selected_server, current_time + new_job->service);
       InsertEvent(list, new_dep);
     }
     else { // insert job in queue
       if(actual_node == payment_control){
-        InsertJob_priority(&(nodes[payment_control].queue), job);
-        priority_classes[job->priority].queue_jobs++;
-        priority_classes[job->priority].node_jobs++;
+        InsertJob_priority(&(nodes[payment_control].queue), new_job);
+        priority_classes[new_job->priority].queue_jobs++;
       }
       else{
-        InsertJob(&(nodes[actual_node].queue), job);
+        InsertJob(&(nodes[actual_node].queue), new_job);
       }
       nodes[actual_node].queue_jobs++;
     }
     nodes[actual_node].node_jobs++;
     nodes[actual_node].last_arrival = current_time;
+    if(actual_node == payment_control){
+      priority_classes[new_job->priority].node_jobs++;
+      priority_classes[new_job->priority].last_arrival = current_time;
+    }
   }
   else { // reject the job
     nodes[actual_node].rejected_jobs++;
@@ -225,6 +217,8 @@ void process_departure(event **list, double current_time, node_stats *nodes, int
   if(actual_node == payment_control){
     priority_classes[serving_job->priority].servers[actual_server].service_time += serving_job->service;
     priority_classes[serving_job->priority].servers[actual_server].served_jobs++;
+    priority_classes[serving_job->priority].servers[actual_server].last_departure_time = current_time;
+    
     priority_classes[serving_job->priority].processed_jobs++;
     priority_classes[serving_job->priority].node_jobs--;
   }
@@ -236,7 +230,7 @@ void process_departure(event **list, double current_time, node_stats *nodes, int
     nodes[actual_node].servers[actual_server].serving_job = new_job;
     nodes[actual_node].queue_jobs--;
     if(actual_node == payment_control){
-      priority_classes[serving_job->priority].queue_jobs--;
+      priority_classes[new_job->priority].queue_jobs--;
     }
 
     new_dep = GenerateEvent(job_departure, actual_node, actual_server, current_time + new_job->service);
@@ -255,6 +249,7 @@ void execute_replica(event **list, node_stats *nodes, time_integrated *areas) {
   node_id actual_node;
   int actual_server;
   double next_time;
+
   while(*list != NULL){
     // extract next event
     ev = ExtractEvent(list);

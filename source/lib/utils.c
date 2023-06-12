@@ -619,6 +619,66 @@ void print_statistic_result(statistic_analysis *result, int mode){
 }
 
 /**
+* Print statistic result of the simulation
+**/
+void print_priority_statistic_result(statistic_analysis *result, statistic_analysis *priority_result, int mode){
+  int k;
+  
+  if(mode == finite_horizon){
+    printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
+  }
+  else if(mode == infinite_horizon){
+    printf("Based on a simulation split into %ld batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
+  }
+
+  for(k=0; k<NODES-1; k++){
+    printf("Node %d:\n", k+1);
+    printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", result->interarrival[k][mean], result->interarrival[k][interval]);
+    printf("    avg wait             = %10.6lf +/- %9.6lf\n", result->wait[k][mean], result->wait[k][interval]);
+    printf("    avg delay            = %10.6lf +/- %9.6lf\n", result->delay[k][mean], result->delay[k][interval]);
+    printf("    avg service          = %10.6lf +/- %9.6lf\n", result->service[k][mean], result->service[k][interval]);
+    printf("    avg # in node        = %10.6lf +/- %9.6lf\n", result->Ns[k][mean], result->Ns[k][interval]);
+    printf("    avg # in queue       = %10.6lf +/- %9.6lf\n", result->Nq[k][mean], result->Nq[k][interval]);
+    printf("    avg utilizzation     = %10.6lf +/- %9.6lf\n", result->utilization[k][mean], result->utilization[k][interval]);
+    printf("    ploss                = %8.4lf %% +/- %7.4lf %%\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
+    printf("\n");
+  }
+  printf("Node %d:\n", k+1);
+  printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", result->interarrival[k][mean], result->interarrival[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf("        class[%d]         = %10.6lf +/- %9.6lf\n", i+1, priority_result->interarrival[i][mean], priority_result->interarrival[i][interval]);
+  }
+  printf("    avg wait             = %10.6lf +/- %9.6lf\n", result->wait[k][mean], result->wait[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf("        class[%d]         = %10.6lf +/- %9.6lf\n", i+1, priority_result->wait[i][mean], priority_result->wait[i][interval]);
+  }
+  printf("    avg delay            = %10.6lf +/- %9.6lf\n", result->delay[k][mean], result->delay[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf("        class[%d]         = %10.6lf +/- %9.6lf\n", i+1, priority_result->delay[i][mean], priority_result->delay[i][interval]);
+  }
+  printf("    avg service          = %10.6lf +/- %9.6lf\n", result->service[k][mean], result->service[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf("        class[%d]         = %10.6lf +/- %9.6lf\n", i+1, priority_result->service[i][mean], priority_result->service[i][interval]);
+  }
+  printf("    avg # in node        = %10.6lf +/- %9.6lf\n", result->Ns[k][mean], result->Ns[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf("        class[%d]         = %10.6lf +/- %9.6lf\n", i+1, priority_result->Ns[i][mean], priority_result->Ns[i][interval]);
+  }
+  printf("    avg # in queue       = %10.6lf +/- %9.6lf\n", result->Nq[k][mean], result->Nq[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf("        class[%d]         = %10.6lf +/- %9.6lf\n", i+1, priority_result->Nq[i][mean], priority_result->Nq[i][interval]);
+  }
+  printf("    avg utilizzation     = %10.6lf +/- %9.6lf\n", result->utilization[k][mean], result->utilization[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf("        class[%d]         = %10.6lf +/- %9.6lf\n", i+1, priority_result->utilization[i][mean], priority_result->utilization[i][interval]);
+  }
+  printf("    ploss                = %8.4lf %% +/- %7.4lf %%\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
+  printf("\n");
+  
+  printf("Average max response time = %7.3lf s +/- %6.3f s\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
+}
+
+/**
 * Save statistic result of the simulation
 **/
 void save_to_csv(statistic_analysis *result, project_phase phase, int mode, int seed){
