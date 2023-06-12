@@ -9,15 +9,18 @@
 
 double lambda[NODES] = {1.9, 0.8, 0.0, 0.0};
 double mu[NODES] = {1.0/2, 1.0/3.2, 1.0/2.5, 1.0/1.3};
-int servers_num[NODES] = {5, 6, 3, 5};
+int servers_num[NODES] = {5, 6, 3, 4};
 unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY};
 double p[3] = {0.65, 0.2, 0.4};
+double priority_probs[PRIORITY_CLASSES] = {0.3, 0.7};
 
 int seed = 17;
 unsigned long external_arrivals;
 unsigned long max_processable_jobs = INFINITE_PROCESSABLE_JOBS;
 double first_batch_arrival[NODES] = {0, 0, 0, 0};
 double current_time = START;
+node_stats *priority_classes;
+time_integrated *priority_areas;
 
 int mode;
 double stop_time;
@@ -34,8 +37,11 @@ void execute_batch(event**, node_stats*, time_integrated*, int, int);
 void init_event_list(event**);
 void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
+void init_priority_nodes(node_stats**, node_id);
 void init_areas(time_integrated**);
+void init_priority_areas(time_integrated**);
 void init_result(analysis***);
+void init_priority_result(analysis***);
 
 
 int main(int argc, char *argv[])
@@ -45,8 +51,8 @@ int main(int argc, char *argv[])
   time_integrated *areas;
   node_id actual_node;
   int actual_server, current_batch = 0;
-  analysis **result;
-  statistic_analysis statistic_result;
+  analysis **result, **priority_result;
+  statistic_analysis statistic_result, priority_statistic_result;
 
   fflush(stdout);
   if (argc != 2) {
@@ -77,17 +83,21 @@ int main(int argc, char *argv[])
   switch(mode){
     case finite_horizon:
       init_result(&result);
+      init_result(&priority_result);
       for(int rep=0; rep<iter_num; rep++){
         external_arrivals = 0;
         init_event_list(&event_list);
         init_nodes(&nodes);
+        init_priority_nodes(&priority_classes, payment_control);
         init_areas(&areas);
+        init_priority_areas(&priority_areas);
 
         // execute a single simulation run
         execute_replica(&event_list, nodes, areas);
         
         // extract analysis data from the single replica
         extract_analysis(result[rep], nodes, areas, servers_num, current_time, NULL);
+        extract_priority_analysis(priority_result[rep], priority_classes, priority_areas, servers_num[payment_control], current_time, NULL);
         
         // free memory
         free(areas);
@@ -99,6 +109,19 @@ int main(int argc, char *argv[])
 
       // extract statistic analysis data from the entire simulation
       extract_statistic_analysis(result, &statistic_result, mode);
+      extract_priority_statistic_analysis(priority_result, &priority_statistic_result, mode);
+      for(int k=0; k<PRIORITY_CLASSES; k++){
+        printf("class %d:\n", k+1);
+        printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", priority_statistic_result.interarrival[k][mean], priority_statistic_result.interarrival[k][interval]);
+        printf("    avg wait             = %10.6lf +/- %9.6lf\n", priority_statistic_result.wait[k][mean], priority_statistic_result.wait[k][interval]);
+        printf("    avg delay            = %10.6lf +/- %9.6lf\n", priority_statistic_result.delay[k][mean], priority_statistic_result.delay[k][interval]);
+        printf("    avg service          = %10.6lf +/- %9.6lf\n", priority_statistic_result.service[k][mean], priority_statistic_result.service[k][interval]);
+        printf("    avg # in node        = %10.6lf +/- %9.6lf\n", priority_statistic_result.Ns[k][mean], priority_statistic_result.Ns[k][interval]);
+        printf("    avg # in queue       = %10.6lf +/- %9.6lf\n", priority_statistic_result.Nq[k][mean], priority_statistic_result.Nq[k][interval]);
+        printf("    avg utilizzation     = %10.6lf +/- %9.6lf\n", priority_statistic_result.utilization[k][mean], priority_statistic_result.utilization[k][interval]);
+        printf("    ploss                = %8.4lf %% +/- %7.4lf %%\n", 100 * priority_statistic_result.ploss[k][mean], 100 * priority_statistic_result.ploss[k][interval]);
+        printf("\n");
+      }
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
@@ -152,7 +175,7 @@ void process_arrival(event **list, double current_time, node_stats *nodes, int a
   job *job = NULL;
   event *new_dep, *new_arr;
   if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers + queue_len[actual_node]){ // there is availble space in queue
-    job = GenerateJob(current_time, GetService(actual_node));
+    job = GenerateJob(current_time, GetService(actual_node), SelectPriorityClass(PRIORITY_CLASSES, priority_probs));
     if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers){
       int selected_server = SelectServer(nodes[actual_node]); // find available server
       nodes[actual_node].servers[selected_server].status = busy;
@@ -161,7 +184,14 @@ void process_arrival(event **list, double current_time, node_stats *nodes, int a
       InsertEvent(list, new_dep);
     }
     else { // insert job in queue
-      InsertJob(&(nodes[actual_node].queue), job);
+      if(actual_node == payment_control){
+        InsertJob_priority(&(nodes[payment_control].queue), job);
+        priority_classes[job->priority].queue_jobs++;
+        priority_classes[job->priority].node_jobs++;
+      }
+      else{
+        InsertJob(&(nodes[actual_node].queue), job);
+      }
       nodes[actual_node].queue_jobs++;
     }
     nodes[actual_node].node_jobs++;
@@ -181,23 +211,35 @@ void process_arrival(event **list, double current_time, node_stats *nodes, int a
 }
 
 void process_departure(event **list, double current_time, node_stats *nodes, int actual_node, int actual_server) {
-  job *job = NULL;
+  job *new_job = NULL;
   event *new_dep, *new_arr;
-  double service = nodes[actual_node].servers[actual_server].serving_job->service;
-  nodes[actual_node].servers[actual_server].service_time += service;
+  job *serving_job = nodes[actual_node].servers[actual_server].serving_job;
+
+  nodes[actual_node].servers[actual_server].service_time += serving_job->service;
   nodes[actual_node].servers[actual_server].served_jobs++;
   nodes[actual_node].servers[actual_server].last_departure_time = current_time;
 
   nodes[actual_node].processed_jobs++;
   nodes[actual_node].node_jobs--;
+
+  if(actual_node == payment_control){
+    priority_classes[serving_job->priority].servers[actual_server].service_time += serving_job->service;
+    priority_classes[serving_job->priority].servers[actual_server].served_jobs++;
+    priority_classes[serving_job->priority].processed_jobs++;
+    priority_classes[serving_job->priority].node_jobs--;
+  }
+
   free(nodes[actual_node].servers[actual_server].serving_job);
 
   if(nodes[actual_node].queue_jobs > 0){
-    job = ExtractJob(&(nodes[actual_node].queue));
-    nodes[actual_node].servers[actual_server].serving_job = job;
+    new_job = ExtractJob(&(nodes[actual_node].queue));
+    nodes[actual_node].servers[actual_server].serving_job = new_job;
     nodes[actual_node].queue_jobs--;
+    if(actual_node == payment_control){
+      priority_classes[serving_job->priority].queue_jobs--;
+    }
 
-    new_dep = GenerateEvent(job_departure, actual_node, actual_server, current_time + job->service);
+    new_dep = GenerateEvent(job_departure, actual_node, actual_server, current_time + new_job->service);
     InsertEvent(list, new_dep);
   }
   else{
@@ -224,6 +266,10 @@ void execute_replica(event **list, node_stats *nodes, time_integrated *areas) {
     for(int node=0; node<NODES; node++){ 
       areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
       areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
+    }
+    for(int class=0; class<PRIORITY_CLASSES; class++){ 
+      priority_areas[class].node_area += (next_time - current_time) * priority_classes[class].node_jobs;
+      priority_areas[class].queue_area += (next_time - current_time) * priority_classes[class].queue_jobs;
     }
     current_time = next_time;
 
@@ -301,8 +347,28 @@ void init_nodes(node_stats **nodes){
   }
 }
 
+void init_priority_nodes(node_stats **nodes, node_id node){
+  *nodes = calloc(PRIORITY_CLASSES, sizeof(node_stats));
+  if(*nodes == NULL){
+    printf("Error allocating memory for: nodes_stats\n");
+    exit(2);
+  }
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    (*nodes)[i].total_servers = servers_num[node];
+    init_servers(&((*nodes)[i].servers), servers_num[node]);
+  }
+}
+
 void init_areas(time_integrated **areas){
   *areas = calloc(NODES, sizeof(time_integrated));
+  if(*areas == NULL){
+    printf("Error allocating memory for: time_integrated\n");
+    exit(3);
+  }
+}
+
+void init_priority_areas(time_integrated **areas){
+  *areas = calloc(PRIORITY_CLASSES, sizeof(time_integrated));
   if(*areas == NULL){
     printf("Error allocating memory for: time_integrated\n");
     exit(3);
@@ -325,6 +391,30 @@ void init_result(analysis ***result){
       (*result)[rep][i].server_utilization = calloc(servers_num[i], sizeof(double));
       (*result)[rep][i].server_service = calloc(servers_num[i], sizeof(double));
       (*result)[rep][i].server_share = calloc(servers_num[i], sizeof(double));
+      if((*result)[rep][i].server_utilization == NULL || (*result)[rep][i].server_service == NULL || (*result)[rep][i].server_share == NULL){
+        printf("Error allocating memory: analysis server statistics\n");
+        exit(4);
+      }
+    }
+  }
+}
+
+void init_priority_result(analysis ***result){
+  *result = calloc(iter_num, sizeof(analysis*));
+  if(*result == NULL){
+    printf("Error allocating memory for: analysis\n");
+    exit(4);
+  }
+  for(int rep=0; rep<iter_num; rep++){
+    (*result)[rep] = calloc(PRIORITY_CLASSES, sizeof(analysis));
+    if(*result == NULL){
+      printf("Error allocating memory for: analysis\n");
+      exit(4);
+    }
+    for(int i=0; i<PRIORITY_CLASSES; i++){
+      (*result)[rep][i].server_utilization = calloc(servers_num[payment_control], sizeof(double));
+      (*result)[rep][i].server_service = calloc(servers_num[payment_control], sizeof(double));
+      (*result)[rep][i].server_share = calloc(servers_num[payment_control], sizeof(double));
       if((*result)[rep][i].server_utilization == NULL || (*result)[rep][i].server_service == NULL || (*result)[rep][i].server_share == NULL){
         printf("Error allocating memory: analysis server statistics\n");
         exit(4);

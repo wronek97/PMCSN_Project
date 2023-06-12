@@ -189,7 +189,7 @@ void process_arrival(event **list, double current_time, node_stats *nodes, int a
   job *job = NULL;
   event *new_dep, *new_arr;
   if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers + queue_len[actual_node]){ // there is available space in queue
-    job = GenerateJob(current_time, GetService(actual_node));
+    job = GenerateJob(current_time, GetService(actual_node), 0);
     if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers){
       int selected_server = SelectServer(nodes[actual_node]); // find available server
       nodes[actual_node].servers[selected_server].status = busy;
