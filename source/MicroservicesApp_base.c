@@ -29,8 +29,8 @@ double GetInterArrival(node_id);
 double GetService(node_id);
 void process_arrival(event**, double, node_stats*, int, int);
 void process_departure(event**, double, node_stats*, int, int);
-void execute_batch(event**, node_stats*, time_integrated*, int, int);
 void execute_replica(event**, node_stats*, time_integrated*); 
+void execute_batch(event**, node_stats*, time_integrated*, int, int);
 void init_event_list(event**);
 void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
@@ -114,7 +114,6 @@ int main(int argc, char *argv[])
       int current_batch = 0;
       external_arrivals = 0;
 
-
       // execute and extract statistic result from every single batch
       for (int k=0; k<iter_num; k++) {
         execute_batch(&event_list, nodes, areas, batch_size, k);
@@ -167,6 +166,7 @@ int main(int argc, char *argv[])
       print_statistic_result(&statistic_result, mode);
       save_to_csv(&statistic_result, phase, mode, seed);
       break;
+
 
     default:
       break;
