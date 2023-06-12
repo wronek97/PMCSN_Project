@@ -17,16 +17,20 @@ int seed = 17;
 unsigned long external_arrivals;
 unsigned long max_processable_jobs = INFINITE_PROCESSABLE_JOBS;
 double first_batch_arrival[NODES] = {0, 0, 0, 0};
+double current_time = START;
 
 int mode;
 double stop_time;
 long iter_num;
+int batch_size;
 project_phase phase = base;
 
 double GetInterArrival(node_id);
 double GetService(node_id);
 void process_arrival(event**, double, node_stats*, int, int);
 void process_departure(event**, double, node_stats*, int, int);
+void execute_batch(event**, node_stats*, time_integrated*, int, int);
+void execute_replica(event**, node_stats*, time_integrated*); 
 void init_event_list(event**);
 void init_servers(server_stats**, int);
 void init_nodes(node_stats**);
@@ -40,8 +44,7 @@ int main(int argc, char *argv[])
   node_stats *nodes;
   time_integrated *areas;
   node_id actual_node;
-  int actual_server, current_batch = 0;
-  double current_time = START, next_time;
+  int actual_server;
   analysis **result;
   statistic_analysis statistic_result;
 
@@ -59,6 +62,7 @@ int main(int argc, char *argv[])
     mode = infinite_horizon;
     stop_time = INFINITE_HORIZON_STOP;
     iter_num = BATCH_NUM;
+    batch_size = BATCH_SIZE;
   }
   else{
     printf("Specify the simulation mode: FINITE or INFINITE\n");
@@ -79,29 +83,9 @@ int main(int argc, char *argv[])
         init_nodes(&nodes);
         init_areas(&areas);
 
-        while(event_list != NULL){
-          // extract next event
-          ev = ExtractEvent(&event_list);
-          actual_node = ev->node;
-          actual_server = ev->server;
-          next_time = ev->time;
-
-          // update integrals for every node
-          for(int node=0; node<NODES; node++){ 
-            areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
-            areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
-          }
-          current_time = next_time;
-
-          // process an arrival on a free server or in queue
-          if(ev->type == job_arrival) process_arrival(&event_list, current_time, nodes, actual_node, actual_server);
-          
-          // process a departure from the specific busy server 
-          else process_departure(&event_list, current_time, nodes, actual_node, actual_server);
-          
-          free(ev);
-        }
-
+        // execute a single simulation run
+        execute_replica(&event_list, nodes, areas);
+        
         // extract analysis data from the single replica
         extract_analysis(result[rep], nodes, areas, servers_num, current_time, NULL);
         
@@ -127,8 +111,19 @@ int main(int argc, char *argv[])
       init_event_list(&event_list);
       init_nodes(&nodes);
       init_areas(&areas);
+      int current_batch = 0;
       external_arrivals = 0;
 
+
+      // execute and extract statistic result from every single batch
+      for (int k=0; k<iter_num; k++) {
+        execute_batch(&event_list, nodes, areas, batch_size, k);
+        extract_analysis(result[k], nodes, areas, servers_num, (BATCH_SIZE / (lambda[0] + lambda[1])), first_batch_arrival);
+        loading_bar((double)(k+1)/iter_num);
+        reset_stats(nodes, areas, first_batch_arrival);
+      }
+      /*
+      double next_time;
       while(event_list != NULL){
         // extract next event
         ev = ExtractEvent(&event_list);
@@ -161,9 +156,10 @@ int main(int argc, char *argv[])
       }
 
       // extract analysis data from last batch and complete loading bar
-      extract_analysis(result[iter_num - 1], nodes, areas, servers_num, current_time, first_batch_arrival);
-      loading_bar(1.0);
-      
+      //extract_analysis(result[iter_num - 1], nodes, areas, servers_num, current_time, first_batch_arrival);
+      //loading_bar(1.0);
+*/
+
       // extract statistic analysis data from the entire simulation
       extract_statistic_analysis(result, &statistic_result, mode);
 
@@ -192,7 +188,7 @@ double GetService(node_id k){
 void process_arrival(event **list, double current_time, node_stats *nodes, int actual_node, int actual_server) {
   job *job = NULL;
   event *new_dep, *new_arr;
-  if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers + queue_len[actual_node]){ // there is availble space in queue
+  if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers + queue_len[actual_node]){ // there is available space in queue
     job = GenerateJob(current_time, GetService(actual_node));
     if(nodes[actual_node].node_jobs < nodes[actual_node].total_servers){
       int selected_server = SelectServer(nodes[actual_node]); // find available server
@@ -212,9 +208,9 @@ void process_arrival(event **list, double current_time, node_stats *nodes, int a
     nodes[actual_node].rejected_jobs++;
   }
 
-  if(actual_server == outside){
-    new_arr = GenerateEvent(job_arrival, actual_node, outside, current_time + GetInterArrival(actual_node)); // generate next arrival event
-    if(new_arr->time < stop_time && external_arrivals < max_processable_jobs){ // schedule event only on condition
+  if(actual_server == outside){ // generate next arrival event and schedule on condition
+    new_arr = GenerateEvent(job_arrival, actual_node, outside, current_time + GetInterArrival(actual_node));
+    if(new_arr->time < stop_time && external_arrivals < max_processable_jobs){
       InsertEvent(list, new_arr);
       external_arrivals++;
     }
@@ -247,6 +243,65 @@ void process_departure(event **list, double current_time, node_stats *nodes, int
   
   new_arr = GenerateEvent(job_arrival, SwitchNode(p, actual_node), actual_server, current_time);
   InsertEvent(list, new_arr);
+}
+
+void execute_replica(event **list, node_stats *nodes, time_integrated *areas) {
+  event *ev;
+  node_id actual_node;
+  int actual_server;
+  double next_time;
+  while(*list != NULL){
+    // extract next event
+    ev = ExtractEvent(list);
+    actual_node = ev->node;
+    actual_server = ev->server;
+    next_time = ev->time;
+
+    // update integrals for every node
+    for(int node=0; node<NODES; node++){ 
+      areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
+      areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
+    }
+    current_time = next_time;
+
+    // process an arrival on a free server or in queue
+    if(ev->type == job_arrival) process_arrival(list, current_time, nodes, actual_node, actual_server);
+    
+    // process a departure from the specific busy server 
+    else process_departure(list, current_time, nodes, actual_node, actual_server);
+    
+    free(ev);
+  }
+}
+
+void execute_batch(event **list, node_stats *nodes, time_integrated *areas, int b, int k){
+  event *ev;
+  node_id actual_node;
+  int actual_server;
+  double next_time;
+  // spawn new event until we achieve b jobs in the batch
+  while (external_arrivals < (b * (k + 1))){
+    // extract next event
+    ev = ExtractEvent(list);
+    actual_node = ev->node;
+    actual_server = ev->server;
+    next_time = ev->time;
+
+    // update integrals for every node
+    for(int node=0; node<NODES; node++){ 
+      areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
+      areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
+    }
+    current_time = next_time;
+
+    // process an arrival on a free server or in queue
+    if(ev->type == job_arrival) process_arrival(list, current_time, nodes, actual_node, actual_server);
+    
+    // process a departure from the specific busy server
+    else process_departure(list, current_time, nodes, actual_node, actual_server);
+    
+    free(ev);
+  }
 }
 
 void init_event_list(event **list){
