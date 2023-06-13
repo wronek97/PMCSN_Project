@@ -178,6 +178,29 @@ void InsertJob(job** queue, job* job_to_insert){
 }
 
 /**
+* Insert a job in a node's priority queue
+**/
+void InsertJob_priority(job** queue, job* job_to_insert){
+  if(*queue == NULL){
+    *queue = job_to_insert;
+    return;
+  }
+
+  job *aux = *queue;
+  if(job_to_insert->priority < aux->priority){
+    job_to_insert->next = aux;
+    *queue = job_to_insert;
+    return;
+  }
+
+  while(aux->next != NULL && job_to_insert->priority >= aux->next->priority){
+    aux = aux->next;
+  }
+  job_to_insert->next = aux->next;
+  aux->next = job_to_insert;
+}
+
+/**
 * Extract next job from the specific queue
 **/
 job* ExtractJob(job **queue)
@@ -190,19 +213,6 @@ job* ExtractJob(job **queue)
   }
 
   return served_job;
-}
-
-/**
-* Insert a job in a node's queue with priority
-**/
-void InsertJob_priority(job** queue, job* job_to_insert){
-  if(*queue == NULL) *queue = job_to_insert;
-  else{
-    job *aux = *queue;
-    while(aux->next != NULL && aux->next->priority <= job_to_insert->priority) aux = aux->next;
-    job_to_insert->next = aux->next;
-    aux->next = job_to_insert;
-  }
 }
 
 /**
