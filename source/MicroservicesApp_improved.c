@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
   PlantSeeds(seed);
 
   printf("Simulation in progress, please wait\n");
-  loading_bar(0.0);
+  //loading_bar(0.0);
 
   switch(mode){
     case finite_horizon:
@@ -113,32 +113,39 @@ int main(int argc, char *argv[])
 
       // print output and save analysis to csv
       print_priority_statistic_result(&statistic_result, &priority_statistic_result, mode);
-      save_to_csv(&statistic_result, phase, mode, seed);
+      save_priority_to_csv(&statistic_result, &priority_statistic_result, phase, mode, seed);
       break;
 
 
     case infinite_horizon:
       init_result(&result);
+      init_result(&priority_result);
       init_event_list(&event_list);
       init_nodes(&nodes);
+      init_priority_nodes(&priority_classes, payment_control);
       init_areas(&areas);
+      init_priority_areas(&priority_areas);
+
       int current_batch = 0;
       external_arrivals = 0;
 
       // execute and extract statistic result from every single batch
+      double batch_period = (BATCH_SIZE / (lambda[0] + lambda[1]));
       for (int k=0; k<iter_num; k++) {
         execute_batch(&event_list, nodes, areas, batch_size, k);
-        extract_analysis(result[k], nodes, areas, servers_num, (BATCH_SIZE / (lambda[0] + lambda[1])), first_batch_arrival);
+        extract_analysis(result[k], nodes, areas, servers_num, batch_period, first_batch_arrival);
+        extract_priority_analysis(priority_result[k], priority_classes, priority_areas, servers_num[payment_control], batch_period, NULL);
         loading_bar((double)(k+1)/iter_num);
         reset_stats(nodes, areas, first_batch_arrival);
       }
 
       // extract statistic analysis data from the entire simulation
       extract_statistic_analysis(result, &statistic_result, mode);
+      extract_priority_statistic_analysis(priority_result, &priority_statistic_result, mode);
 
       // print output and save analysis to csv
-      print_statistic_result(&statistic_result, mode);
-      save_to_csv(&statistic_result, phase, mode, seed);
+      print_priority_statistic_result(&statistic_result, &priority_statistic_result, mode);
+      save_priority_to_csv(&statistic_result, &priority_statistic_result, phase, mode, seed);
       break;
 
 
@@ -314,7 +321,7 @@ void init_event_list(event **list){
   for(int node=0; node<NODES; node++){
     if(lambda[node] != 0){
       new_arrival = GenerateEvent(job_arrival, node, outside, START + GetInterArrival(node));
-      if(new_arrival->time < stop_time && external_arrivals < max_processable_jobs){ // schedule event only on condition
+      if(new_arrival->time < stop_time && external_arrivals < max_processable_jobs){
         InsertEvent(list, new_arrival);
         external_arrivals++;
       }

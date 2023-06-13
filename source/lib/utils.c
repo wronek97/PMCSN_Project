@@ -1,5 +1,5 @@
 /**
-* Find the next node to send a job
+* Find the next node where to send a job
 **/
 node_id SwitchNode(double *prob, node_id start_node){
   node_id destination_node;
@@ -10,24 +10,14 @@ node_id SwitchNode(double *prob, node_id start_node){
 
   switch(start_node){
     case flight:
-      if(rand < prob[0]){
-        destination_node = payment_control;
-      }
-      else if(rand > 1 - prob[1]){
-        destination_node = hotel;
-      }
-      else{
-        destination_node = taxi;
-      }
+      if(rand < prob[0]) destination_node = payment_control;
+      else if(rand > 1 - prob[1]) destination_node = hotel;
+      else destination_node = taxi;
       break;
 
     case hotel:
-      if(rand < prob[2]){
-        destination_node = taxi;           
-      }
-      else{
-        destination_node = payment_control;
-      }
+      if(rand < prob[2]) destination_node = taxi;           
+      else destination_node = payment_control;
       break;
     
     case taxi:
@@ -42,6 +32,9 @@ node_id SwitchNode(double *prob, node_id start_node){
   return destination_node;
 }
 
+/**
+* Find the priority queue responsible for handling a job
+**/
 int SelectPriorityClass(int classes_num, double *probs)
 {
   double tot_prob = 0;
@@ -63,11 +56,8 @@ int SelectPriorityClass(int classes_num, double *probs)
   double ext = Random();
   for(int i=0; i<classes_num; i++){
     aux += probs[i];
-    if(ext <= aux){
-      return i;
-    }
+    if(ext <= aux) return i;
   }
-
   return classes_num-1;
 }
 
@@ -76,9 +66,8 @@ int SelectPriorityClass(int classes_num, double *probs)
 **/ 
 int SelectServer(node_stats node){ 
   int i=0, s;
-  while(node.servers[i].status == busy){     
-    i++;
-  }
+  while(node.servers[i].status == busy) i++;
+  
   if(i >= node.total_servers){
     printf("Error: You are trying to serve a job when all servers are busy!!\n\n");
     exit(0);
@@ -86,9 +75,7 @@ int SelectServer(node_stats node){
 
   s = i;
   for(i=s+1; i<node.total_servers; i++){
-    if(node.servers[i].status == idle && node.servers[i].last_departure_time < node.servers[s].last_departure_time){
-      s = i;
-    }
+    if(node.servers[i].status == idle && node.servers[i].last_departure_time < node.servers[s].last_departure_time) s = i;
   }
 
   return s;
@@ -100,9 +87,7 @@ int SelectServer(node_stats node){
 event* GenerateEvent(event_type type, node_id node, int server, double time){
   event* new_event;
 
-  if(node >= NODES){
-    return NULL;
-  }
+  if(node >= NODES) return NULL;
 
   new_event = malloc(sizeof(event));
   if(new_event == NULL){
@@ -123,13 +108,9 @@ event* GenerateEvent(event_type type, node_id node, int server, double time){
 * Insert an event in the correct position in the event list
 **/
 void InsertEvent(event **list, event *new_event){
-  if(new_event == NULL){
-    return;
-  }
+  if(new_event == NULL) return;
 
-  if(*list == NULL){
-    *list = new_event;
-  }
+  if(*list == NULL) *list = new_event;
   else{
     event *prev = NULL, *tmp = *list;
     while(tmp->next != NULL && tmp->time < new_event->time){
@@ -137,18 +118,14 @@ void InsertEvent(event **list, event *new_event){
       tmp = tmp->next;
     }
     if(prev != NULL){
-      if(tmp->time < new_event->time){
-        tmp->next = new_event;
-      }
+      if(tmp->time < new_event->time) tmp->next = new_event;
       else{
         prev->next = new_event;
         new_event->next = tmp;
       }
     }
     else{
-      if(tmp->time < new_event->time){
-        tmp->next = new_event;
-      }
+      if(tmp->time < new_event->time) tmp->next = new_event;
       else{
         new_event->next = *list;
         *list = new_event;
@@ -192,14 +169,10 @@ job* GenerateJob(double arrival, double service, int priority){
 * Insert a job in a node's queue
 **/
 void InsertJob(job** queue, job* job_to_insert){
-  if(*queue == NULL){
-    *queue = job_to_insert;
-  }
+  if(*queue == NULL) *queue = job_to_insert;
   else{
     job *aux = *queue;
-    while(aux->next != NULL){
-      aux = aux->next;
-    }
+    while(aux->next != NULL) aux = aux->next;
     aux->next = job_to_insert;
   }
 }
@@ -220,17 +193,13 @@ job* ExtractJob(job **queue)
 }
 
 /**
-* Insert a job in a node's queue
+* Insert a job in a node's queue with priority
 **/
 void InsertJob_priority(job** queue, job* job_to_insert){
-  if(*queue == NULL){
-    *queue = job_to_insert;
-  }
+  if(*queue == NULL) *queue = job_to_insert;
   else{
     job *aux = *queue;
-    while(aux->next != NULL && aux->next->priority <= job_to_insert->priority){
-      aux = aux->next;
-    }
+    while(aux->next != NULL && aux->next->priority <= job_to_insert->priority) aux = aux->next;
     job_to_insert->next = aux->next;
     aux->next = job_to_insert;
   }
@@ -254,27 +223,21 @@ void reset_stats(node_stats *nodes, time_integrated *areas, double *first_batch_
 }
 
 /**
-* Extract results from a single run (finite horizon) or a single batch (infinite horizon) of the simulation
+* Extract intermediate results from a single run (finite horizon) or a single batch (infinite horizon) of the simulation
 **/
 void extract_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int *servers_num, double oper_period, double *first_batch_arrival){
   double total_service[NODES];
 
   for(int k=0; k<NODES; k++){
     total_service[k] = 0;
-    for(int s=0; s<servers_num[k]; s++){
-      total_service[k] += nodes[k].servers[s].service_time;
-    }
+    for(int s=0; s<servers_num[k]; s++) total_service[k] += nodes[k].servers[s].service_time;
   }
 
   for(int i=0; i<NODES; i++){
     result[i].jobs = nodes[i].processed_jobs;
 
-    if(first_batch_arrival == NULL){
-      result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
-    }
-    else{
-      result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
-    }
+    if(first_batch_arrival == NULL) result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    else result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
 
     result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
 
@@ -288,12 +251,8 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
 
     result[i].utilization = (total_service[i] / servers_num[i]) / oper_period;
 
-    if(nodes[i].rejected_jobs == 0 && nodes[i].processed_jobs == 0){
-      result[i].ploss = 0;
-    }
-    else{
-      result[i].ploss = (double) nodes[i].rejected_jobs / (nodes[i].rejected_jobs + nodes[i].processed_jobs);
-    }
+    if(nodes[i].rejected_jobs == 0 && nodes[i].processed_jobs == 0) result[i].ploss = 0;
+    else result[i].ploss = (double) nodes[i].rejected_jobs / (nodes[i].rejected_jobs + nodes[i].processed_jobs);
 
     for(int s=0; s<servers_num[i]; s++){
       result[i].server_utilization[s] = nodes[i].servers[s].service_time / oper_period;
@@ -303,25 +262,22 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
   }
 }
 
+/**
+* Extract intermediate results from priority queues of a single run (finite horizon) or a single batch (infinite horizon) of the simulation
+**/
 void extract_priority_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int servers_num, double oper_period, double *first_batch_arrival){
   double total_service[PRIORITY_CLASSES];
 
   for(int k=0; k<PRIORITY_CLASSES; k++){
     total_service[k] = 0;
-    for(int s=0; s<servers_num; s++){
-      total_service[k] += nodes[k].servers[s].service_time;
-    }
+    for(int s=0; s<servers_num; s++) total_service[k] += nodes[k].servers[s].service_time;
   }
 
   for(int i=0; i<PRIORITY_CLASSES; i++){
     result[i].jobs = nodes[i].processed_jobs;
 
-    if(first_batch_arrival == NULL){
-      result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
-    }
-    else{
-      result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
-    }
+    if(first_batch_arrival == NULL) result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    else result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
 
     result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
 
@@ -335,12 +291,8 @@ void extract_priority_analysis(analysis *result, node_stats *nodes, time_integra
 
     result[i].utilization = (total_service[i] / servers_num) / oper_period;
 
-    if(nodes[i].rejected_jobs == 0 && nodes[i].processed_jobs == 0){
-      result[i].ploss = 0;
-    }
-    else{
-      result[i].ploss = (double) nodes[i].rejected_jobs / (nodes[i].rejected_jobs + nodes[i].processed_jobs);
-    }
+    if(nodes[i].rejected_jobs == 0 && nodes[i].processed_jobs == 0) result[i].ploss = 0;
+    else result[i].ploss = (double) nodes[i].rejected_jobs / (nodes[i].rejected_jobs + nodes[i].processed_jobs);
 
     for(int s=0; s<servers_num; s++){
       result[i].server_utilization[s] = nodes[i].servers[s].service_time / oper_period;
@@ -451,9 +403,7 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
   sum.max_wait = 0;
   for(int n=1; n<=iter_num; n++){
     max_wait[n-1] = 0;
-    for(int i=0; i<NODES; i++){
-      max_wait[n-1] += result[n-1][i].wait;
-    }
+    for(int i=0; i<NODES; i++) max_wait[n-1] += result[n-1][i].wait;
 
     diff = max_wait[n-1] - statistic_result->avg_max_wait[mean];
     sum.max_wait += diff * diff * (n - 1.0) / n;
@@ -469,7 +419,7 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
 }
 
 /**
-* Extract final statistic result of the simulation
+* Extract final statistic result from priority queues of the simulation
 **/
 void extract_priority_statistic_analysis(analysis **result, statistic_analysis *statistic_result, int mode){
   long iter_num;
@@ -584,9 +534,7 @@ void print_replica(analysis *result, int *servers_num){
     printf("    ploss                = %.3lf%%\n", 100 * result[k].ploss);
     printf("\n  the server statistics are:\n\n");
     printf("  server     utilization     avg service        share\n");
-    for(int s=0; s<servers_num[k]; s++){
-      printf("%6d %15lf %15lf %15.4lf%%\n", s+1, result[k].server_utilization[s], result[k].server_service[s], result[k].server_share[s]);
-    }
+    for(int s=0; s<servers_num[k]; s++) printf("%6d %15lf %15lf %15.4lf%%\n", s+1, result[k].server_utilization[s], result[k].server_service[s], result[k].server_share[s]);
     printf("\n");
   }
   printf("\n");
@@ -596,12 +544,8 @@ void print_replica(analysis *result, int *servers_num){
 * Print statistic result of the simulation
 **/
 void print_statistic_result(statistic_analysis *result, int mode){
-  if(mode == finite_horizon){
-    printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
-  }
-  else if(mode == infinite_horizon){
-    printf("Based on a simulation split into %ld batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
-  }
+  if(mode == finite_horizon) printf("Based upon %d simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
+  else if(mode == infinite_horizon) printf("Based on a simulation split into %d batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
 
   for(int k=0; k<NODES; k++){
     printf("Node %d:\n", k+1);
@@ -619,17 +563,14 @@ void print_statistic_result(statistic_analysis *result, int mode){
 }
 
 /**
-* Print statistic result of the simulation
+* Print statistic result with priority queues of the simulation
 **/
 void print_priority_statistic_result(statistic_analysis *result, statistic_analysis *priority_result, int mode){
   int k;
   
-  if(mode == finite_horizon){
-    printf("Based upon %ld simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
-  }
-  else if(mode == infinite_horizon){
-    printf("Based on a simulation split into %ld batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
-  }
+  if(mode == finite_horizon) printf("Based upon %d simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
+  else if(mode == infinite_horizon) printf("Based on a simulation split into %d batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
+  else exit(0);
 
   for(k=0; k<NODES-1; k++){
     printf("Node %d:\n", k+1);
@@ -730,6 +671,66 @@ void save_to_csv(statistic_analysis *result, project_phase phase, int mode, int 
     fprintf(csv,"ploss; %.4lf%%;+/-;%.4lf%%;\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
     fprintf(csv,"\n");
   }
+  fprintf(csv,"Average max response time:; %.4lf;+/-;%.4lf;\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
+  fclose(csv);
+}
+
+/**
+* Save statistic result with priority queues of the simulation
+**/
+void save_priority_to_csv(statistic_analysis *result, statistic_analysis *priority_result, project_phase phase, int mode, int seed){
+  char filename[128];
+  int k;
+  if(mode == finite_horizon && phase == improved) snprintf(filename, 48, "analysis//transient//improved_transient_%03d.csv", seed);
+  else if(mode == infinite_horizon && phase == improved) snprintf(filename, 54, "analysis//steady_state//improved_steady_state_%03d.csv", seed);
+  else exit(0);
+
+  FILE *csv = fopen(filename, "w");
+
+  for(k=0; k<NODES-1; k++){
+    fprintf(csv, "NODE %d;mean;;interval;\n", k+1);
+    fprintf(csv, "avg interarrival;%lf;+/-;%lf;\n", result->interarrival[k][mean], result->interarrival[k][interval]);
+    fprintf(csv, "avg wait;%lf;+/-;%lf;\n", result->wait[k][mean], result->wait[k][interval]);
+    fprintf(csv, "avg delay;%lf;+/-;%lf;\n", result->delay[k][mean], result->delay[k][interval]);
+    fprintf(csv, "avg service;%lf;+/-;%lf;\n", result->service[k][mean], result->service[k][interval]);
+    fprintf(csv, "avg # in node;%lf;+/-;%lf;\n", result->Ns[k][mean], result->Ns[k][interval]);
+    fprintf(csv, "avg # in queue;%lf;+/-;%lf;\n", result->Nq[k][mean], result->Nq[k][interval]);
+    fprintf(csv, "avg utilizzation;%lf;+/-;%lf;\n", result->utilization[k][mean], result->utilization[k][interval]);
+    fprintf(csv, "ploss; %.4lf%%;+/-;%.4lf%%;\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
+    fprintf(csv, "\n");
+  }
+  fprintf(csv, "NODE %d;mean;;interval\n", k+1);
+  fprintf(csv, "avg interarrival;%lf;+/-;%lf;\n", result->interarrival[k][mean], result->interarrival[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    fprintf(csv, "class[%d];%lf;+/-;%lf;\n", i+1, priority_result->interarrival[i][mean], priority_result->interarrival[i][interval]);
+  }
+  fprintf(csv, "avg wait;%lf;+/-;%lf;\n", result->wait[k][mean], result->wait[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    fprintf(csv, "class[%d];%lf;+/-;%lf;\n", i+1, priority_result->wait[i][mean], priority_result->wait[i][interval]);
+  }
+  fprintf(csv, "avg delay;%lf;+/-;%lf;\n", result->delay[k][mean], result->delay[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    fprintf(csv, "class[%d];%lf;+/-;%lf;\n", i+1, priority_result->delay[i][mean], priority_result->delay[i][interval]);
+  }
+  fprintf(csv, "avg service;%lf;+/-;%lf;\n", result->service[k][mean], result->service[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    fprintf(csv, "class[%d];%lf;+/-;%lf;\n", i+1, priority_result->service[i][mean], priority_result->service[i][interval]);
+  }
+  fprintf(csv, "avg # in node;%lf;+/-;%lf;\n", result->Ns[k][mean], result->Ns[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    fprintf(csv, "class[%d];%lf;+/-;%lf;\n", i+1, priority_result->Ns[i][mean], priority_result->Ns[i][interval]);
+  }
+  fprintf(csv, "avg # in queue;%lf;+/-;%lf;\n", result->Nq[k][mean], result->Nq[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    fprintf(csv, "class[%d];%lf;+/-;%lf;\n", i+1, priority_result->Nq[i][mean], priority_result->Nq[i][interval]);
+  }
+  fprintf(csv, "avg utilizzation;%lf;+/-;%lf;\n", result->utilization[k][mean], result->utilization[k][interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    fprintf(csv, "class[%d];%lf;+/-;%lf;\n", i+1, priority_result->utilization[i][mean], priority_result->utilization[i][interval]);
+  }
+  fprintf(csv, "ploss;%.4lf%%;+/-;%.4lf%%;\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
+  fprintf(csv, "\n");
+
   fprintf(csv,"Average max response time:; %.4lf;+/-;%.4lf;\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
   fclose(csv);
 }
