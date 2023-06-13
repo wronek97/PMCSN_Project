@@ -122,4 +122,5 @@ typedef struct {    // [0] = mean, [1] = confidence interval
   double utilization[NODES][2];
   double ploss[NODES][2];
   double avg_max_wait[2];
+  double priority_avg_max_wait[PRIORITY_CLASSES][2];
 } statistic_analysis;

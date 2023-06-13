@@ -413,8 +413,9 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
   sum.max_wait = 0;
   for(int n=1; n<=iter_num; n++){
     max_wait[n-1] = 0;
-    for(int i=0; i<NODES; i++) max_wait[n-1] += result[n-1][i].wait;
-
+    for(int i=0; i<NODES; i++){
+      max_wait[n-1] += result[n-1][i].wait;
+    }
     diff = max_wait[n-1] - statistic_result->avg_max_wait[mean];
     sum.max_wait += diff * diff * (n - 1.0) / n;
     statistic_result->avg_max_wait[mean] += diff / n;
@@ -431,7 +432,7 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
 /**
 * Extract final statistic result from priority queues of the simulation
 **/
-void extract_priority_statistic_analysis(analysis **result, statistic_analysis *statistic_result, int mode){
+void extract_priority_statistic_analysis(analysis **result, analysis **node_result, statistic_analysis *statistic_result, int mode){
   long iter_num;
   if (mode == finite_horizon) iter_num = REPLICAS_NUM;
   else iter_num = BATCH_NUM;
@@ -448,9 +449,17 @@ void extract_priority_statistic_analysis(analysis **result, statistic_analysis *
     double utilization;
     double ploss;
     double max_wait;
+    double priority_max_wait[PRIORITY_CLASSES];
   } sum;
   double *max_wait = calloc(iter_num, sizeof(double));
-  
+  double *priority_max_wait[PRIORITY_CLASSES];
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    priority_max_wait[i] = calloc(iter_num, sizeof(double));
+    if(priority_max_wait[i] == NULL){
+      printf("Error allocating memory: priority_max_wait calloc\n");
+      exit(5);
+    }
+  }
   if(max_wait == NULL){
     printf("Error allocating memory: max_wait calloc\n");
     exit(5);
@@ -524,6 +533,34 @@ void extract_priority_statistic_analysis(analysis **result, statistic_analysis *
       exit(5);
     }
   }
+
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    statistic_result->priority_avg_max_wait[i][mean] = 0;
+    sum.priority_max_wait[i] = 0;
+  }
+  
+  for(int n=1; n<=iter_num; n++){
+    for(int i=0; i<PRIORITY_CLASSES; i++){
+      priority_max_wait[i][n-1] = 0;
+      for(int node=0; node<NODES-1; node++){
+        priority_max_wait[i][n-1] += node_result[n-1][node].wait;
+      }
+      priority_max_wait[i][n-1] += result[n-1][i].wait;
+
+      diff = priority_max_wait[i][n-1] - statistic_result->priority_avg_max_wait[i][mean];
+      sum.priority_max_wait[i] += diff * diff * (n - 1.0) / n;
+      statistic_result->priority_avg_max_wait[i][mean] += diff / n;
+    }
+  }
+  if(iter_num > 1){
+    for(int i=0; i<PRIORITY_CLASSES; i++){
+      statistic_result->priority_avg_max_wait[i][interval] = t * sqrt(sum.priority_max_wait[i] / iter_num) / sqrt(iter_num - 1);
+    }
+  }
+  else{
+    printf("ERROR - insufficient data\n");
+    exit(5);
+  }
 }
 
 /**
@@ -575,7 +612,7 @@ void print_statistic_result(statistic_analysis *result, int mode){
 /**
 * Print statistic result with priority queues of the simulation
 **/
-void print_priority_statistic_result(statistic_analysis *result, statistic_analysis *priority_result, int mode){
+void print_priority_statistic_result(statistic_analysis *result, statistic_analysis *priority_result, double *priority_perc, int mode){
   int k;
   
   if(mode == finite_horizon) printf("Based upon %d simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
@@ -595,6 +632,10 @@ void print_priority_statistic_result(statistic_analysis *result, statistic_analy
     printf("\n");
   }
   printf("Node %d:\n", k+1);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf(" class[%d] job percentage = %6.2lf %%\n", i+1, 100 * priority_perc[i]);
+  }
+  printf("\n");
   printf("    avg interarrival     = %10.6lf +/- %9.6lf\n", result->interarrival[k][mean], result->interarrival[k][interval]);
   for(int i=0; i<PRIORITY_CLASSES; i++){
     printf("        class[%d]         = %10.6lf +/- %9.6lf\n", i+1, priority_result->interarrival[i][mean], priority_result->interarrival[i][interval]);
@@ -626,7 +667,10 @@ void print_priority_statistic_result(statistic_analysis *result, statistic_analy
   printf("    ploss                = %8.4lf %% +/- %7.4lf %%\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
   printf("\n");
   
-  printf("Average max response time = %7.3lf s +/- %6.3f s\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
+  printf("Average max response time = %7.3lf s +/- %6.3lf s\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    printf("        class[%d]          = %7.3lf s +/- %6.3lf s\n", i+1, priority_result->priority_avg_max_wait[i][mean], priority_result->priority_avg_max_wait[i][interval]);
+  }
 }
 
 /**

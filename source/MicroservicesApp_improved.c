@@ -1,7 +1,7 @@
 /*
   QoS achived
-  1) ploss on payment_control node <  5 %  (=  0.00 %)
-  2) max average response time     < 12 s  (= 11.36 s)
+  1) ploss on payment_control node <  0 %  (=  0.00 %)
+  2) max average response time     < 12 s  (= 12 s for priority class '1')
 */
 
 #include "config.h"
@@ -12,7 +12,7 @@ double mu[NODES] = {1.0/2, 1.0/3.2, 1.0/2.5, 1.0/1.3};
 int servers_num[NODES] = {5, 6, 3, 4};
 unsigned long queue_len[NODES] = {INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY, INFINITE_CAPACITY};
 double p[3] = {0.65, 0.2, 0.4};
-double priority_probs[PRIORITY_CLASSES] = {0.3, 0.7};
+double priority_probs[PRIORITY_CLASSES] = {0.8569, 0.1431};
 
 int seed = 17;
 unsigned long external_arrivals;
@@ -109,10 +109,10 @@ int main(int argc, char *argv[])
 
       // extract statistic analysis data from the entire simulation
       extract_statistic_analysis(result, &statistic_result, mode);
-      extract_priority_statistic_analysis(priority_result, &priority_statistic_result, mode);
+      extract_priority_statistic_analysis(priority_result, result, &priority_statistic_result, mode);
 
       // print output and save analysis to csv
-      print_priority_statistic_result(&statistic_result, &priority_statistic_result, mode);
+      print_priority_statistic_result(&statistic_result, &priority_statistic_result, priority_probs, mode);
       save_priority_to_csv(&statistic_result, &priority_statistic_result, phase, mode, seed);
       break;
 
@@ -141,10 +141,10 @@ int main(int argc, char *argv[])
 
       // extract statistic analysis data from the entire simulation
       extract_statistic_analysis(result, &statistic_result, mode);
-      extract_priority_statistic_analysis(priority_result, &priority_statistic_result, mode);
+      extract_priority_statistic_analysis(priority_result, result, &priority_statistic_result, mode);
 
       // print output and save analysis to csv
-      print_priority_statistic_result(&statistic_result, &priority_statistic_result, mode);
+      print_priority_statistic_result(&statistic_result, &priority_statistic_result, priority_probs, mode);
       save_priority_to_csv(&statistic_result, &priority_statistic_result, phase, mode, seed);
       break;
 
