@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
-      save_to_csv(&statistic_result, phase, mode, seed);
+      save_to_csv(&statistic_result, phase, seed, mode);
       break;
 
 
@@ -121,50 +121,13 @@ int main(int argc, char *argv[])
         loading_bar((double)(k+1)/iter_num);
         reset_stats(nodes, areas, first_batch_arrival);
       }
-      /*
-      double next_time;
-      while(event_list != NULL){
-        // extract next event
-        ev = ExtractEvent(&event_list);
-        actual_node = ev->node;
-        actual_server = ev->server;
-        next_time = ev->time;
-
-        // extract analysis data from the single batch
-        if(current_time >= (current_batch + 1) * (stop_time / iter_num) && current_batch != iter_num - 1){
-          extract_analysis(result[current_batch], nodes, areas, servers_num, stop_time / iter_num, first_batch_arrival);
-          loading_bar((double)(current_batch+1)/iter_num); // update loading bar
-          reset_stats(nodes, areas, first_batch_arrival);
-          current_batch++;
-        }
-
-        // update integrals for every node
-        for(int node=0; node<NODES; node++){ 
-          areas[node].node_area += (next_time - current_time) * nodes[node].node_jobs;
-          areas[node].queue_area += (next_time - current_time) * nodes[node].queue_jobs;
-        }
-        current_time = next_time;
-
-        // process an arrival on a free server or in queue
-        if(ev->type == job_arrival) process_arrival(&event_list, current_time, nodes, actual_node, actual_server);
-        
-        // process a departure from the specific busy server
-        else process_departure(&event_list, current_time, nodes, actual_node, actual_server);
-        
-        free(ev);
-      }
-
-      // extract analysis data from last batch and complete loading bar
-      //extract_analysis(result[iter_num - 1], nodes, areas, servers_num, current_time, first_batch_arrival);
-      //loading_bar(1.0);
-*/
 
       // extract statistic analysis data from the entire simulation
       extract_statistic_analysis(result, &statistic_result, mode);
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
-      save_to_csv(&statistic_result, phase, mode, seed);
+      save_to_csv(&statistic_result, phase, seed, mode);
       break;
 
 

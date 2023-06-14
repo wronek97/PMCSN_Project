@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
-      save_to_csv(&statistic_result, phase, mode, seed);
+      save_to_csv(&statistic_result, phase, seed, mode);
       break;
 
 
@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
 
       // print output and save analysis to csv
       print_statistic_result(&statistic_result, mode);
-      save_to_csv(&statistic_result, phase, mode, seed);
+      save_to_csv(&statistic_result, phase, seed, mode);
       break;
 
 

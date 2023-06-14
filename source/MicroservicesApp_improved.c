@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
   PlantSeeds(seed);
 
   printf("Simulation in progress, please wait\n");
-  //loading_bar(0.0);
+  loading_bar(0.0);
 
   switch(mode){
     case finite_horizon:
@@ -109,11 +109,11 @@ int main(int argc, char *argv[])
 
       // extract statistic analysis data from the entire simulation
       extract_statistic_analysis(result, &statistic_result, mode);
-      extract_priority_statistic_analysis(priority_result, result, &priority_statistic_result, mode);
+      extract_priority_statistic_analysis(result, priority_result, &priority_statistic_result, mode);
 
       // print output and save analysis to csv
-      print_priority_statistic_result(&statistic_result, &priority_statistic_result, priority_probs, mode);
-      save_priority_to_csv(&statistic_result, &priority_statistic_result, phase, mode, seed);
+      print_improved_statistic_result(&statistic_result, &priority_statistic_result, priority_probs, mode);
+      save_improved_to_csv(&statistic_result, &priority_statistic_result, phase, seed, mode);
       break;
 
 
@@ -144,8 +144,8 @@ int main(int argc, char *argv[])
       extract_priority_statistic_analysis(priority_result, result, &priority_statistic_result, mode);
 
       // print output and save analysis to csv
-      print_priority_statistic_result(&statistic_result, &priority_statistic_result, priority_probs, mode);
-      save_priority_to_csv(&statistic_result, &priority_statistic_result, phase, mode, seed);
+      print_improved_statistic_result(&statistic_result, &priority_statistic_result, priority_probs, mode);
+      save_improved_to_csv(&statistic_result, &priority_statistic_result, phase, seed, mode);
       break;
 
 
@@ -181,7 +181,7 @@ void process_arrival(event **list, double current_time, node_stats *nodes, int a
     }
     else { // insert job in queue
       if(actual_node == payment_control){
-        InsertJob_priority(&(nodes[payment_control].queue), new_job);
+        InsertPriorityJob(&(nodes[payment_control].queue), new_job);
         priority_classes[new_job->priority].queue_jobs++;
       }
       else{

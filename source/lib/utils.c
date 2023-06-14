@@ -180,7 +180,7 @@ void InsertJob(job** queue, job* job_to_insert){
 /**
 * Insert a job in a node's priority queue
 **/
-void InsertJob_priority(job** queue, job* job_to_insert){
+void InsertPriorityJob(job** queue, job* job_to_insert){
   if(*queue == NULL){
     *queue = job_to_insert;
     return;
@@ -233,7 +233,7 @@ void reset_stats(node_stats *nodes, time_integrated *areas, double *first_batch_
 }
 
 /**
-* Extract intermediate results from a single run (finite horizon) or a single batch (infinite horizon) of the simulation
+* Extract intermediate results from a single run (finite horizon) or a single batch (infinite horizon) of the base/resized simulation
 **/
 void extract_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int *servers_num, double oper_period, double *first_batch_arrival){
   double total_service[NODES];
@@ -273,7 +273,7 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
 }
 
 /**
-* Extract intermediate results from priority queues of a single run (finite horizon) or a single batch (infinite horizon) of the simulation
+* Extract intermediate results of a single run (finite horizon) or a single batch (infinite horizon) of the improved simulation
 **/
 void extract_priority_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int servers_num, double oper_period, double *first_batch_arrival){
   double total_service[PRIORITY_CLASSES];
@@ -313,7 +313,7 @@ void extract_priority_analysis(analysis *result, node_stats *nodes, time_integra
 }
 
 /**
-* Extract final statistic result of the simulation
+* Extract final statistic result from the base/resized simulation
 **/
 void extract_statistic_analysis(analysis **result, statistic_analysis *statistic_result, int mode){
   long iter_num;
@@ -430,9 +430,9 @@ void extract_statistic_analysis(analysis **result, statistic_analysis *statistic
 }
 
 /**
-* Extract final statistic result from priority queues of the simulation
+* Extract final statistic result from the improved simulation
 **/
-void extract_priority_statistic_analysis(analysis **result, analysis **node_result, statistic_analysis *statistic_result, int mode){
+void extract_priority_statistic_analysis(analysis **result, analysis **priority_result, statistic_analysis *statistic_result, int mode){
   long iter_num;
   if (mode == finite_horizon) iter_num = REPLICAS_NUM;
   else iter_num = BATCH_NUM;
@@ -485,35 +485,35 @@ void extract_priority_statistic_analysis(analysis **result, analysis **node_resu
     sum.ploss = 0;
 
     for(int n=1; n<=iter_num; n++){
-      diff = result[n-1][i].interarrival - statistic_result->interarrival[i][mean];
+      diff = priority_result[n-1][i].interarrival - statistic_result->interarrival[i][mean];
       sum.interarrival += diff * diff * (n - 1.0) / n;
       statistic_result->interarrival[i][mean] += diff / n;
 
-      diff = result[n-1][i].wait - statistic_result->wait[i][mean];
+      diff = priority_result[n-1][i].wait - statistic_result->wait[i][mean];
       sum.wait += diff * diff * (n - 1.0) / n;
       statistic_result->wait[i][mean] += diff / n;
       
-      diff = result[n-1][i].delay - statistic_result->delay[i][mean];
+      diff = priority_result[n-1][i].delay - statistic_result->delay[i][mean];
       sum.delay += diff * diff * (n - 1.0) / n;
       statistic_result->delay[i][mean] += diff / n;
 
-      diff = result[n-1][i].service - statistic_result->service[i][mean];
+      diff = priority_result[n-1][i].service - statistic_result->service[i][mean];
       sum.service += diff * diff * (n - 1.0) / n;
       statistic_result->service[i][mean] += diff / n;
 
-      diff = result[n-1][i].Ns - statistic_result->Ns[i][mean];
+      diff = priority_result[n-1][i].Ns - statistic_result->Ns[i][mean];
       sum.Ns += diff * diff * (n - 1.0) / n;
       statistic_result->Ns[i][mean] += diff / n;
 
-      diff = result[n-1][i].Nq - statistic_result->Nq[i][mean];
+      diff = priority_result[n-1][i].Nq - statistic_result->Nq[i][mean];
       sum.Nq += diff * diff * (n - 1.0) / n;
       statistic_result->Nq[i][mean] += diff / n;
 
-      diff = result[n-1][i].utilization - statistic_result->utilization[i][mean];
+      diff = priority_result[n-1][i].utilization - statistic_result->utilization[i][mean];
       sum.utilization += diff * diff * (n - 1.0) / n;
       statistic_result->utilization[i][mean] += diff / n;
 
-      diff = result[n-1][i].ploss - statistic_result->ploss[i][mean];
+      diff = priority_result[n-1][i].ploss - statistic_result->ploss[i][mean];
       sum.ploss += diff * diff * (n - 1.0) / n;
       statistic_result->ploss[i][mean] += diff / n;
     }
@@ -543,9 +543,9 @@ void extract_priority_statistic_analysis(analysis **result, analysis **node_resu
     for(int i=0; i<PRIORITY_CLASSES; i++){
       priority_max_wait[i][n-1] = 0;
       for(int node=0; node<NODES-1; node++){
-        priority_max_wait[i][n-1] += node_result[n-1][node].wait;
+        priority_max_wait[i][n-1] += result[n-1][node].wait;
       }
-      priority_max_wait[i][n-1] += result[n-1][i].wait;
+      priority_max_wait[i][n-1] += priority_result[n-1][i].wait;
 
       diff = priority_max_wait[i][n-1] - statistic_result->priority_avg_max_wait[i][mean];
       sum.priority_max_wait[i] += diff * diff * (n - 1.0) / n;
@@ -588,7 +588,7 @@ void print_replica(analysis *result, int *servers_num){
 }
 
 /**
-* Print statistic result of the simulation
+* Print statistic result of the base/resized simulation
 **/
 void print_statistic_result(statistic_analysis *result, int mode){
   if(mode == finite_horizon) printf("Based upon %d simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
@@ -610,13 +610,13 @@ void print_statistic_result(statistic_analysis *result, int mode){
 }
 
 /**
-* Print statistic result with priority queues of the simulation
+* Print statistic result of the improved simulation
 **/
-void print_priority_statistic_result(statistic_analysis *result, statistic_analysis *priority_result, double *priority_perc, int mode){
+void print_improved_statistic_result(statistic_analysis *result, statistic_analysis *priority_result, double *priority_perc, int mode){
   int k;
   
-  if(mode == finite_horizon) printf("Based upon %d simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
-  else if(mode == infinite_horizon) printf("Based on a simulation split into %d batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
+  if(mode == finite_horizon) printf("Based on %d simulations and with %.2lf%% confidence:\n\n", REPLICAS_NUM, 100.0 * LOC);
+  else if(mode == infinite_horizon) printf("Based on a simulation splitted into %d batches and with %.2lf%% confidence:\n\n", BATCH_NUM, 100.0 * LOC);
   else exit(0);
 
   for(k=0; k<NODES-1; k++){
@@ -674,11 +674,14 @@ void print_priority_statistic_result(statistic_analysis *result, statistic_analy
 }
 
 /**
-* Save statistic result of the simulation
+* Save statistic result of the base/resized simulation
 **/
-void save_to_csv(statistic_analysis *result, project_phase phase, int mode, int seed){
+void save_to_csv(statistic_analysis *result, project_phase phase, int seed, int mode){
+  char title[128];
   char filename[128];
+
   if(mode == finite_horizon){
+    snprintf(title, 55, "Based on %d simulations and with %.2lf%% confidence;\n\n", REPLICAS_NUM, 100.0 * LOC);
     switch(phase){
       case base:
         snprintf(filename, 44, "analysis//transient//base_transient_%03d.csv", seed);
@@ -695,6 +698,7 @@ void save_to_csv(statistic_analysis *result, project_phase phase, int mode, int 
     }
   }
   else if(mode == infinite_horizon){
+    snprintf(title, 78, "Based on a simulation splitted into %d batches and with %.2lf%% confidence;\n\n", BATCH_NUM, 100.0 * LOC);
     switch(phase){
       case base:
         snprintf(filename, 50, "analysis//steady_state//base_steady_state_%03d.csv", seed);
@@ -710,19 +714,21 @@ void save_to_csv(statistic_analysis *result, project_phase phase, int mode, int 
         break;
     }
   }
+  else exit(0);
 
   FILE *csv = fopen(filename, "w");
+  fputs(title, csv);
 
   for(int k=0; k<NODES; k++){
     fprintf(csv,"NODE %d;mean;;interval;\n", k+1);
-    fprintf(csv,"avg interarrival; %lf;+/-;%lf;\n", result->interarrival[k][mean], result->interarrival[k][interval]);
-    fprintf(csv,"avg wait; %lf;+/-;%lf;\n", result->wait[k][mean], result->wait[k][interval]);
-    fprintf(csv,"avg delay; %lf;+/-;%lf;\n", result->delay[k][mean], result->delay[k][interval]);
-    fprintf(csv,"avg service; %lf;+/-;%lf;\n", result->service[k][mean], result->service[k][interval]);
-    fprintf(csv,"avg # in node; %lf;+/-;%lf;\n", result->Ns[k][mean], result->Ns[k][interval]);
-    fprintf(csv,"avg # in queue; %lf;+/-;%lf;\n", result->Nq[k][mean], result->Nq[k][interval]);
-    fprintf(csv,"avg utilizzation; %lf;+/-;%lf;\n", result->utilization[k][mean], result->utilization[k][interval]);
-    fprintf(csv,"ploss; %.4lf%%;+/-;%.4lf%%;\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
+    fprintf(csv,"avg interarrival;%lf;+/-;%lf;\n", result->interarrival[k][mean], result->interarrival[k][interval]);
+    fprintf(csv,"avg wait;%lf;+/-;%lf;\n", result->wait[k][mean], result->wait[k][interval]);
+    fprintf(csv,"avg delay;%lf;+/-;%lf;\n", result->delay[k][mean], result->delay[k][interval]);
+    fprintf(csv,"avg service;%lf;+/-;%lf;\n", result->service[k][mean], result->service[k][interval]);
+    fprintf(csv,"avg # in node;%lf;+/-;%lf;\n", result->Ns[k][mean], result->Ns[k][interval]);
+    fprintf(csv,"avg # in queue;%lf;+/-;%lf;\n", result->Nq[k][mean], result->Nq[k][interval]);
+    fprintf(csv,"avg utilizzation;%lf;+/-;%lf;\n", result->utilization[k][mean], result->utilization[k][interval]);
+    fprintf(csv,"ploss;%.4lf%%;+/-;%.4lf%%;\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
     fprintf(csv,"\n");
   }
   fprintf(csv,"Average max response time:; %.4lf;+/-;%.4lf;\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
@@ -730,16 +736,24 @@ void save_to_csv(statistic_analysis *result, project_phase phase, int mode, int 
 }
 
 /**
-* Save statistic result with priority queues of the simulation
+* Save statistic result of the improved simulation
 **/
-void save_priority_to_csv(statistic_analysis *result, statistic_analysis *priority_result, project_phase phase, int mode, int seed){
+void save_improved_to_csv(statistic_analysis *result, statistic_analysis *priority_result, project_phase phase, int seed, int mode){
+  char title[128];
   char filename[128];
   int k;
-  if(mode == finite_horizon && phase == improved) snprintf(filename, 48, "analysis//transient//improved_transient_%03d.csv", seed);
-  else if(mode == infinite_horizon && phase == improved) snprintf(filename, 54, "analysis//steady_state//improved_steady_state_%03d.csv", seed);
+  if(mode == finite_horizon && phase == improved) {
+    snprintf(title, 55, "Based on %d simulations and with %.2lf%% confidence;\n\n", REPLICAS_NUM, 100.0 * LOC);
+    snprintf(filename, 48, "analysis//transient//improved_transient_%03d.csv", seed);
+  }
+  else if(mode == infinite_horizon && phase == improved) {
+    snprintf(title, 78, "Based on a simulation splitted into %d batches and with %.2lf%% confidence;\n\n", BATCH_NUM, 100.0 * LOC);
+    snprintf(filename, 54, "analysis//steady_state//improved_steady_state_%03d.csv", seed);
+  }
   else exit(0);
 
   FILE *csv = fopen(filename, "w");
+  fputs(title, csv);
 
   for(k=0; k<NODES-1; k++){
     fprintf(csv, "NODE %d;mean;;interval;\n", k+1);
@@ -750,7 +764,7 @@ void save_priority_to_csv(statistic_analysis *result, statistic_analysis *priori
     fprintf(csv, "avg # in node;%lf;+/-;%lf;\n", result->Ns[k][mean], result->Ns[k][interval]);
     fprintf(csv, "avg # in queue;%lf;+/-;%lf;\n", result->Nq[k][mean], result->Nq[k][interval]);
     fprintf(csv, "avg utilizzation;%lf;+/-;%lf;\n", result->utilization[k][mean], result->utilization[k][interval]);
-    fprintf(csv, "ploss; %.4lf%%;+/-;%.4lf%%;\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
+    fprintf(csv, "ploss;%.4lf%%;+/-;%.4lf%%;\n", 100 * result->ploss[k][mean], 100 * result->ploss[k][interval]);
     fprintf(csv, "\n");
   }
   fprintf(csv, "NODE %d;mean;;interval\n", k+1);
@@ -786,6 +800,11 @@ void save_priority_to_csv(statistic_analysis *result, statistic_analysis *priori
   fprintf(csv, "\n");
 
   fprintf(csv,"Average max response time:; %.4lf;+/-;%.4lf;\n", result->avg_max_wait[mean], result->avg_max_wait[interval]);
+  for(int i=0; i<PRIORITY_CLASSES; i++){
+    fprintf(csv, "class[%d]; %.4lf;+/-;%.4lf;\n", i+1, priority_result->priority_avg_max_wait[i][mean], priority_result->priority_avg_max_wait[i][interval]);
+  }
+
+
   fclose(csv);
 }
 

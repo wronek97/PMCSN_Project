@@ -11,12 +11,13 @@
 #define BATCH_NUM                       200         // number of batches
 #define BATCH_SIZE                      500000      // number of jobs in a single batch
 // 500000*200 = 110.000.000 jobs che sono prodotti in circa 41.000.000 s -> arrivi esterni 1.9 j/s + 0.8 j/s = 2.7 j/s
+
 #define START                           0.0         // initial (open the door) time
 #define FINITE_HORIZON_STOP             86400.0     // terminal (close the door) time (1 day for transient analysis)
 #define INFINITE_HORIZON_STOP           43200000.0  // terminal (close the door) time (500 days for steady state analysis)
 
 #define NODES                           4           // number of nodes in the system
-#define PRIORITY_CLASSES                2
+#define PRIORITY_CLASSES                2           // number of priority queues of the last node in the improved scenario
 #define INFINITE_CAPACITY               1 << 27     // large number to simulate infinite queue
 #define INFINITE_PROCESSABLE_JOBS       1 << 27     // large number to simulate infinite
 #define LOC                             0.99        // level of confidence, use 0.99 for 99% confidence
@@ -122,5 +123,5 @@ typedef struct {    // [0] = mean, [1] = confidence interval
   double utilization[NODES][2];
   double ploss[NODES][2];
   double avg_max_wait[2];
-  double priority_avg_max_wait[PRIORITY_CLASSES][2];
+  double priority_avg_max_wait[PRIORITY_CLASSES][2];    // used for priority queues
 } statistic_analysis;
