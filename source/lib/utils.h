@@ -25,4 +25,5 @@ void save_to_csv(statistic_analysis*, project_phase, int, int);
 void save_improved_to_csv(statistic_analysis*, statistic_analysis*, project_phase, int, int);
 
 void reset_stats(node_stats*, time_integrated*, double*);
+void reset_priority_stats(node_stats*, time_integrated*);
 void loading_bar(double);

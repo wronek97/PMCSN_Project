@@ -218,9 +218,25 @@ job* ExtractJob(job **queue)
 /**
 * Reset integrals to clean values for next batch in infinite horizon simulation
 **/
-void reset_stats(node_stats *nodes, time_integrated *areas, double *first_batch_arrival){
+void reset_stats(node_stats *nodes, time_integrated *areas, double *first_arrival){
   for(int i=0; i<NODES; i++){
-    first_batch_arrival[i] = nodes[i].last_arrival;
+    first_arrival[i] = nodes[i].last_arrival;
+    nodes[i].processed_jobs = 0;
+    nodes[i].rejected_jobs = 0;
+    for(int s=0; s<nodes[i].total_servers; s++){
+      nodes[i].servers[s].service_time = 0;
+      nodes[i].servers[s].served_jobs = 0;
+    }
+    areas[i].node_area = 0;
+    areas[i].queue_area = 0;
+  }
+}
+
+/**
+* Reset integrals to clean values for next batch in infinite horizon simulation
+**/
+void reset_priority_stats(node_stats *nodes, time_integrated *areas){
+  for(int i=0; i<PRIORITY_CLASSES; i++){
     nodes[i].processed_jobs = 0;
     nodes[i].rejected_jobs = 0;
     for(int s=0; s<nodes[i].total_servers; s++){
@@ -235,7 +251,7 @@ void reset_stats(node_stats *nodes, time_integrated *areas, double *first_batch_
 /**
 * Extract intermediate results from a single run (finite horizon) or a single batch (infinite horizon) of the base/resized simulation
 **/
-void extract_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int *servers_num, double oper_period, double *first_batch_arrival){
+void extract_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int *servers_num, double oper_period, double *first_arrival){
   double total_service[NODES];
 
   for(int k=0; k<NODES; k++){
@@ -246,8 +262,8 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
   for(int i=0; i<NODES; i++){
     result[i].jobs = nodes[i].processed_jobs;
 
-    if(first_batch_arrival == NULL) result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
-    else result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
+    if(first_arrival == NULL) result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    else result[i].interarrival = (nodes[i].last_arrival - first_arrival[i]) / nodes[i].processed_jobs;
 
     result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
 
@@ -275,7 +291,7 @@ void extract_analysis(analysis *result, node_stats *nodes, time_integrated *area
 /**
 * Extract intermediate results of a single run (finite horizon) or a single batch (infinite horizon) of the improved simulation
 **/
-void extract_priority_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int servers_num, double oper_period, double *first_batch_arrival){
+void extract_priority_analysis(analysis *result, node_stats *nodes, time_integrated *areas, int servers_num, double oper_period, double *first_arrival){
   double total_service[PRIORITY_CLASSES];
 
   for(int k=0; k<PRIORITY_CLASSES; k++){
@@ -286,8 +302,8 @@ void extract_priority_analysis(analysis *result, node_stats *nodes, time_integra
   for(int i=0; i<PRIORITY_CLASSES; i++){
     result[i].jobs = nodes[i].processed_jobs;
 
-    if(first_batch_arrival == NULL) result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
-    else result[i].interarrival = (nodes[i].last_arrival - first_batch_arrival[i]) / nodes[i].processed_jobs;
+    if(first_arrival == NULL) result[i].interarrival = (nodes[i].last_arrival - START) / nodes[i].processed_jobs;
+    else result[i].interarrival = (nodes[i].last_arrival - first_arrival[i]) / nodes[i].processed_jobs;
 
     result[i].wait = areas[i].node_area / nodes[i].processed_jobs;
 
