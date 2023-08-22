@@ -692,13 +692,13 @@ void print_improved_statistic_result(statistic_analysis *result, statistic_analy
 /**
 * Save statistic result of the base/resized simulation
 **/
-void save_to_csv(statistic_analysis *result, project_phase phase, int seed, int mode){
+void save_to_csv(statistic_analysis *result, project_topology topology, int seed, int mode){
   char title[128];
   char filename[128];
 
   if(mode == finite_horizon){
     snprintf(title, 55, "Based on %d simulations and with %.2lf%% confidence;\n\n", REPLICAS_NUM, 100.0 * LOC);
-    switch(phase){
+    switch(topology){
       case base:
         snprintf(filename, 44, "analysis//transient//base_transient_%03d.csv", seed);
         break;
@@ -715,7 +715,7 @@ void save_to_csv(statistic_analysis *result, project_phase phase, int seed, int 
   }
   else if(mode == infinite_horizon){
     snprintf(title, 78, "Based on a simulation splitted into %d batches and with %.2lf%% confidence;\n\n", BATCH_NUM, 100.0 * LOC);
-    switch(phase){
+    switch(topology){
       case base:
         snprintf(filename, 50, "analysis//steady_state//base_steady_state_%03d.csv", seed);
         break;
@@ -754,15 +754,15 @@ void save_to_csv(statistic_analysis *result, project_phase phase, int seed, int 
 /**
 * Save statistic result of the improved simulation
 **/
-void save_improved_to_csv(statistic_analysis *result, statistic_analysis *priority_result, project_phase phase, int seed, int mode){
+void save_improved_to_csv(statistic_analysis *result, statistic_analysis *priority_result, project_topology topology, int seed, int mode){
   char title[128];
   char filename[128];
   int k;
-  if(mode == finite_horizon && phase == improved) {
+  if(mode == finite_horizon && topology == improved) {
     snprintf(title, 55, "Based on %d simulations and with %.2lf%% confidence;\n\n", REPLICAS_NUM, 100.0 * LOC);
     snprintf(filename, 48, "analysis//transient//improved_transient_%03d.csv", seed);
   }
-  else if(mode == infinite_horizon && phase == improved) {
+  else if(mode == infinite_horizon && topology == improved) {
     snprintf(title, 78, "Based on a simulation splitted into %d batches and with %.2lf%% confidence;\n\n", BATCH_NUM, 100.0 * LOC);
     snprintf(filename, 54, "analysis//steady_state//improved_steady_state_%03d.csv", seed);
   }

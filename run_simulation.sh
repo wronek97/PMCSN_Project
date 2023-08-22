@@ -22,7 +22,7 @@ while getopts "hm:t:" FLAG; do
             exit 0
             ;;
         ?) 
-            echo "script usage: $0 [ -m <FINITE|INFINITE> ] [ -t <BASE|RESIZED|IMPROVED> ]" >&2
+            echo "script usage: $0 [ -t <BASE|RESIZED|IMPROVED> ] [ -m <FINITE|INFINITE> ]" >&2
             exit 1
             ;;
     esac
@@ -32,19 +32,19 @@ shift "$(( OPTIND - 1 ))"
 
 # check presence of mode and topology flags
 if [ -z "$mode" ] || [ -z "$topology" ] ; then
-        echo "script usage: $0 [ -m <FINITE|INFINITE> ] [ -t <BASE|RESIZED|IMPROVED> ]" >&2
+        echo "script usage: $0 [ -t <BASE|RESIZED|IMPROVED> ] [ -m <FINITE|INFINITE> ]" >&2
         exit 1
 fi
 
 # check mode flag
 if [ $mode != "FINITE" ] && [ $mode != "INFINITE" ]; then
-        echo "script usage: $0 [ -m <FINITE|INFINITE> ] [ -t <BASE|RESIZED|IMPROVED> ]" >&2
+        echo "script usage: $0 [ -t <BASE|RESIZED|IMPROVED> ] [ -m <FINITE|INFINITE> ]" >&2
         exit 1
 fi
 
 # check topology flag
 if [ $topology != "BASE" ] && [ $topology != "RESIZED" ] && [ $topology != "IMPROVED" ]; then
-        echo "script usage: $0 [ -m <FINITE|INFINITE> ] [ -t <BASE|RESIZED|IMPROVED> ]" >&2
+        echo "script usage: $0 [ -t <BASE|RESIZED|IMPROVED> ] [ -m <FINITE|INFINITE> ]" >&2
         exit 1
 fi
 
@@ -55,4 +55,4 @@ make
 # start the correct simulation using lowercase flag
 cd ..
 clear
-./bin/simulation_${topology,,} $mode 
+./bin/simulation $topology $mode 

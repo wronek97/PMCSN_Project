@@ -28,7 +28,7 @@ typedef enum {
   base,
   resized,
   improved
-} project_phase;
+} project_topology;
 
 typedef enum {
   finite_horizon,

@@ -10,27 +10,7 @@ all:
 	mkdir -p $(BINDIR)
 	mkdir -p $(RESDIR)$(TRANSIENT)
 	mkdir -p $(RESDIR)$(STEADY_STATE)
-	$(CC) microservices_base.c $(LIBS)rngs.c $(LIBS)rvgs.c $(LIBS)rvms.c -o $(BINDIR)simulation_base $(FLAGS)
-	$(CC) microservices_resized.c $(LIBS)rngs.c $(LIBS)rvgs.c $(LIBS)rvms.c -o $(BINDIR)simulation_resized $(FLAGS)
-	$(CC) microservices_improved.c $(LIBS)rngs.c $(LIBS)rvgs.c $(LIBS)rvms.c -o $(BINDIR)simulation_improved $(FLAGS)
-
-base:
-	mkdir -p $(BINDIR)
-	mkdir -p $(RESDIR)$(TRANSIENT)
-	mkdir -p $(RESDIR)$(STEADY_STATE)
-	$(CC) microservices_base.c $(LIBS)rngs.c $(LIBS)rvgs.c $(LIBS)rvms.c -o $(BINDIR)simulation_base $(FLAGS)
-	
-resized:
-	mkdir -p $(BINDIR)
-	mkdir -p $(RESDIR)$(TRANSIENT)
-	mkdir -p $(RESDIR)$(STEADY_STATE)
-	$(CC) microservices_resized.c $(LIBS)rngs.c $(LIBS)rvgs.c $(LIBS)rvms.c -o $(BINDIR)simulation_resized $(FLAGS)
-
-improved:
-	mkdir -p $(BINDIR)
-	mkdir -p $(RESDIR)$(TRANSIENT)
-	mkdir -p $(RESDIR)$(STEADY_STATE)
-	$(CC) microservices_improved.c $(LIBS)rngs.c $(LIBS)rvgs.c $(LIBS)rvms.c -o $(BINDIR)simulation_improved $(FLAGS)
+	$(CC) microservices.c $(LIBS)rngs.c $(LIBS)rvgs.c $(LIBS)rvms.c -o $(BINDIR)simulation $(FLAGS)
 
 clean:
 	rm -f -r $(BINDIR)
