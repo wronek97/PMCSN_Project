@@ -12,7 +12,7 @@
 #include "rvms.h"
 
 #define START                       0.0         // initial (open the door) time
-#define STOP                        86400.0     // terminal (close the door) time
+#define STOP                        21600.0     // terminal (close the door) time
 #define REPLICAS_NUM                1000
 #define NODES                       4           // number of nodes in the system
 #define INFINITE_CAPACITY           1 << 25     // large number to simulate infinite queue
@@ -703,15 +703,15 @@ void print_statistic_result(statistic_analysis *result){
 }
 
 void create_csv(){
-  char fileName[29];
-  snprintf(fileName, 29, "initial_steady_state_%03d.csv", seed);
+  char fileName[50];
+  snprintf(fileName, 50, "initial_steady_state_%03d.csv", seed);
   FILE *csv = fopen(fileName, "w");
   fclose(csv);
 }
 
 void save_steady_state(analysis **result){
-  char fileName[29];
-  snprintf(fileName, 29, "initial_steady_state_%03d.csv", seed);
+  char fileName[50];
+  snprintf(fileName, 50, "initial_steady_state_%03d.csv", seed);
   FILE *csv = fopen(fileName, "a");
 
   for(int k=0; k<NODES; k++){

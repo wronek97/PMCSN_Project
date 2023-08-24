@@ -1,7 +1,15 @@
 /*
+  problems to solve:
+  1) ploss too high                                             (= 43.14 %)
+  2) average response time of complete reservations too high    (= 56.23 s)
+
   QoS achived
-  1) ploss on payment_control node <  0 %  (=  0.00 %)
-  2) max average response time     < 12 s  (= 12 s for priority class '1')
+  1) ploss on payment_control node                      <  5 %  (=  4.15 %)
+  2) average response time of complete reservations     < 12 s  (= 11.84 s)
+
+  QoS achived (alternative solution)
+  1) ploss on payment_control node                     <  0 %  (=  0.00 %)
+  2) average response time for priority class '1'      < 12 s  (= 12.00 s for priority class '1')
 */
 
 #include "config.h"
