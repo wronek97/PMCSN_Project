@@ -7,14 +7,14 @@
 #include "lib/rvms.h"
 
 // SIMULATION CONFIG VALUES
-#define REPLICAS_NUM                    64         // number of runs
-#define BATCH_NUM                       64         // number of batches
+#define REPLICAS_NUM                    64          // number of runs
+#define BATCH_NUM                       64          // number of batches
 #define BATCH_SIZE                      18000       // number of jobs in a single batch
-// 1800*64 = 115.200 jobs che sono prodotti in circa 42.650 s (12h) -> arrivi esterni 1.9 j/s + 0.8 j/s = 2.7 j/s
+// 18000*64 = 1.115.200 jobs che sono prodotti in circa 413 s (5 giorni) -> arrivi esterni 1.9 j/s + 0.8 j/s = 2.7 j/s
 
 #define START                           0.0         // initial (open the door) time
 #define FINITE_HORIZON_STOP             86400.0     // terminal (close the door) time (1 day for transient analysis)
-#define INFINITE_HORIZON_STOP           864000.0     // terminal (close the door) time (1 day for steady state analysis)
+#define INFINITE_HORIZON_STOP           864000.0    // terminal (close the door) time (1 day for steady state analysis)
 
 #define NODES                           4           // number of nodes in the system
 #define PRIORITY_CLASSES                2           // number of priority queues of the last node in the improved scenario
