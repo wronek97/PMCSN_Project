@@ -1,0 +1,6 @@
+Per eseguire la simulazione, sia ad orizzonte infinito che finito, è sufficiente lanciare lo script "run_simulation.sh" specificando due flag:
+ 1. -m MODE, rappresenta la modalità di simulazione [FINITE|INFINITE]
+ 2. -t TOPOLOGY, rappresenta la topologia del sistema [BASE|RESIZED|IMPROVED]
+
+Comando di esecuzione: sh run_simulation.sh -m MODE -t TOPOLOGY
+In alternativa: ./run_simulation.sh -m MODE -t TOPOLOGY
